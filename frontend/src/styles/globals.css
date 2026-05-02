@@ -68,7 +68,16 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 /* Custom Components */
 @layer components {
   .btn-primary {
-    @apply rounded-lg bg-blue-600 px-4 py-2 font-medium text-white transition-colors hover:bg-blue-700 active:bg-blue-800;
+    @apply rounded-lg px-4 py-2 font-medium text-white transition-colors hover:opacity-90 active:opacity-75;
+    background-color: #EC6B1B;
+  }
+
+  .btn-primary:hover {
+    background-color: #d45a0a;
+  }
+
+  .btn-primary:active {
+    background-color: #c24906;
   }
 
   .btn-secondary {
@@ -80,6 +89,19 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   }
 
   .input {
-    @apply w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-slate-900 placeholder-gray-500 transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 dark:border-gray-600 dark:bg-slate-700 dark:text-white dark:placeholder-gray-400;
+    @apply w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-slate-900 placeholder-gray-500 transition-colors focus:border-[#EC6B1B] focus:outline-none focus:ring-2 focus:ring-[#EC6B1B] focus:ring-opacity-50 dark:border-gray-600 dark:bg-slate-700 dark:text-white dark:placeholder-gray-400;
+  }
+
+  /* Brand accent color utilities */
+  .accent-brand {
+    color: #EC6B1B;
+  }
+
+  .bg-brand {
+    background-color: #EC6B1B;
+  }
+
+  .border-brand {
+    border-color: #EC6B1B;
   }
 }

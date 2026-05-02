@@ -1,99 +1,304 @@
 /**
  * Loading Screen Component
- * Interactive animated loading screen
+ * Highly animated and interactive loading screen
  */
 
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 
 export default function LoadingScreen({ message = 'Loading...' }) {
   const { isDark } = useTheme();
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setProgress((prev) => (prev >= 95 ? 95 : prev + Math.random() * 30));
+    }, 300);
+    return () => clearInterval(interval);
+  }, []);
+
+  const accentColor = '#EC6B1B';
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex flex-col items-center justify-center ${
-        isDark ? 'bg-slate-900' : 'bg-white'
+      className={`fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden ${
+        isDark ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900' : 'bg-gradient-to-br from-gray-50 via-white to-gray-50'
       }`}
     >
-      {/* Logo */}
-      <div className="mb-8">
-        <img src="/logo.png" alt="LoadGate" className="h-24 w-24" />
-      </div>
-
-      {/* Loading Animation */}
-      <div className="mb-8">
-        <svg
-          className="h-16 w-16 animate-spin"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-        >
-          <circle
-            className={`opacity-25 ${isDark ? 'stroke-blue-500' : 'stroke-blue-600'}`}
-            cx="12"
-            cy="12"
-            r="10"
-            strokeWidth="4"
-          />
-          <path
-            className={`opacity-75 ${isDark ? 'fill-blue-500' : 'fill-blue-600'}`}
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          />
-        </svg>
-      </div>
-
-      {/* Animated Text */}
-      <h2 className={`mb-4 text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-        {message}
-      </h2>
-
-      {/* Loading Dots Animation */}
-      <div className="flex gap-2">
-        {[0, 1, 2].map((i) => (
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        {/* Floating Orbs */}
+        {[...Array(3)].map((_, i) => (
           <div
-            key={i}
-            className={`h-3 w-3 rounded-full ${isDark ? 'bg-blue-500' : 'bg-blue-600'}`}
+            key={`orb-${i}`}
+            className="absolute rounded-full opacity-10"
             style={{
-              animation: `bounce 1.4s infinite`,
-              animationDelay: `${i * 0.2}s`,
+              width: '200px',
+              height: '200px',
+              backgroundColor: accentColor,
+              animation: `float ${8 + i * 2}s infinite ease-in-out`,
+              animationDelay: `${i * 2}s`,
+              left: `${10 + i * 30}%`,
+              top: `${-50 + i * 40}%`,
             }}
           />
         ))}
       </div>
 
-      {/* Progress Bar */}
-      <div className={`mt-8 w-64 h-1 rounded-full ${isDark ? 'bg-slate-700' : 'bg-gray-300'}`}>
-        <div
-          className={`h-full rounded-full ${isDark ? 'bg-blue-500' : 'bg-blue-600'}`}
+      {/* Content Container */}
+      <div className="relative z-10 flex flex-col items-center">
+        {/* Logo with Pulse Animation */}
+        <div className="mb-8 relative">
+          <div
+            className="absolute inset-0 rounded-full opacity-30"
+            style={{
+              boxShadow: `0 0 40px ${accentColor}`,
+              animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            }}
+          />
+          <img src="/logo.png" alt="LoadGate" className="relative h-24 w-24 drop-shadow-lg" />
+        </div>
+
+        {/* Multi-layer Spinner */}
+        <div className="mb-8 relative h-24 w-24 flex items-center justify-center">
+          {/* Outer Rotating Ring */}
+          <svg
+            className="absolute h-24 w-24"
+            style={{
+              animation: 'spin 3s linear infinite',
+            }}
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              stroke={accentColor}
+              strokeWidth="2"
+              opacity="0.2"
+            />
+            <path
+              d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"
+              fill={accentColor}
+              opacity="0.1"
+            />
+          </svg>
+
+          {/* Middle Rotating Ring */}
+          <svg
+            className="absolute h-20 w-20"
+            style={{
+              animation: 'spin-reverse 2s linear infinite',
+            }}
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="8"
+              stroke={accentColor}
+              strokeWidth="2"
+              opacity="0.4"
+            />
+          </svg>
+
+          {/* Inner Pulsing Dot */}
+          <div
+            className="absolute h-4 w-4 rounded-full"
+            style={{
+              backgroundColor: accentColor,
+              boxShadow: `0 0 20px ${accentColor}`,
+              animation: 'pulse-scale 1.5s ease-in-out infinite',
+            }}
+          />
+        </div>
+
+        {/* Animated Text */}
+        <h2
+          className={`mb-6 text-3xl font-bold tracking-wide ${isDark ? 'text-white' : 'text-slate-900'}`}
           style={{
-            animation: `progress 2s infinite`,
+            animation: 'fadeInScale 1s ease-out',
           }}
-        />
+        >
+          {message}
+        </h2>
+
+        {/* Animated Dots */}
+        <div className="mb-8 flex gap-3">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="h-4 w-4 rounded-full"
+              style={{
+                backgroundColor: accentColor,
+                animation: `bounce-dots 1.4s infinite cubic-bezier(0, 0.5, 0.5, 1)`,
+                animationDelay: `${i * 0.2}s`,
+                opacity: 0.7,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Progress Bar */}
+        <div className={`mb-8 h-2 w-64 overflow-hidden rounded-full ${isDark ? 'bg-slate-700' : 'bg-gray-300'}`}>
+          <div
+            className="h-full rounded-full transition-all duration-300 ease-out"
+            style={{
+              width: `${progress}%`,
+              background: `linear-gradient(90deg, ${accentColor}, #ff9a56)`,
+              boxShadow: `0 0 10px ${accentColor}`,
+            }}
+          />
+        </div>
+
+        {/* Progress Text */}
+        <p
+          className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}
+          style={{
+            animation: 'fadeIn 1s ease-out',
+          }}
+        >
+          {Math.round(progress)}%
+        </p>
+      </div>
+
+      {/* Floating Particles */}
+      <div className="absolute inset-0 pointer-events-none">
+        {[...Array(5)].map((_, i) => (
+          <div
+            key={`particle-${i}`}
+            className="absolute w-1 h-1 rounded-full"
+            style={{
+              backgroundColor: accentColor,
+              opacity: 0.5,
+              animation: `float-particle 4s infinite linear`,
+              animationDelay: `${i * 0.8}s`,
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 100}%`,
+            }}
+          />
+        ))}
       </div>
 
       <style>{`
-        @keyframes bounce {
-          0%, 80%, 100% {
-            opacity: 0.3;
-            transform: translateY(0);
+        @keyframes spin {
+          from {
+            transform: rotate(0deg);
           }
-          40% {
-            opacity: 1;
-            transform: translateY(-10px);
+          to {
+            transform: rotate(360deg);
           }
         }
 
-        @keyframes progress {
-          0% {
-            width: 0%;
+        @keyframes spin-reverse {
+          from {
+            transform: rotate(360deg);
+          }
+          to {
+            transform: rotate(0deg);
+          }
+        }
+
+        @keyframes bounce-dots {
+          0%, 100% {
+            transform: translateY(0);
+            opacity: 0.7;
           }
           50% {
-            width: 100%;
+            transform: translateY(-15px);
+            opacity: 1;
+          }
+        }
+
+        @keyframes pulse-scale {
+          0%, 100% {
+            transform: scale(1);
+            opacity: 1;
+          }
+          50% {
+            transform: scale(1.5);
+            opacity: 0.5;
+          }
+        }
+
+        @keyframes float {
+          0%, 100% {
+            transform: translateY(0px) translateX(0px);
+          }
+          25% {
+            transform: translateY(-20px) translateX(10px);
+          }
+          50% {
+            transform: translateY(-40px) translateX(-10px);
+          }
+          75% {
+            transform: translateY(-20px) translateX(10px);
+          }
+        }
+
+        @keyframes float-particle {
+          0% {
+            opacity: 0;
+            transform: translateY(100vh) translateX(0);
+          }
+          10% {
+            opacity: 1;
+          }
+          90% {
+            opacity: 1;
           }
           100% {
-            width: 0%;
+            opacity: 0;
+            transform: translateY(-100vh) translateX(100px);
+          }
+        }
+
+        @keyframes fadeInScale {
+          from {
+            opacity: 0;
+            transform: scale(0.8);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+
+        @keyframes move-vehicle {
+          0% {
+            transform: translateX(-120%) translateY(0);
+          }
+          50% {
+            transform: translateX(0) translateY(-5px);
+          }
+          100% {
+            transform: translateX(120%) translateY(0);
+          }
+        }
+
+        @keyframes scale-bounce {
+          0%, 100% {
+            transform: scaleY(1);
+            opacity: 0.6;
+          }
+          50% {
+            transform: scaleY(1.2);
+            opacity: 1;
           }
         }
       `}</style>

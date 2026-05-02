@@ -100,13 +100,13 @@ export default function SettingsPage() {
             name="calibrationFactor"
             value={settings.calibrationFactor}
             step="0.1"
-           Icon name="MdSave" className="h-5 w-5" /
+            onChange={handleChange}
+            className="input"
+          />
         </div>
 
         <button onClick={handleSave} className="btn-primary flex w-full items-center justify-center gap-2">
-          <React.Suspense fallback={<div className="h-5 w-5" />}>
-            <IconWrapper icon="MdSave" className="h-5 w-5" />
-          </React.Suspense>
+          <Icon name="MdSave" className="h-5 w-5" />
           Save Settings
         </button>
       </div>
@@ -118,9 +118,9 @@ export default function SettingsPage() {
         <div className="mt-4 space-y-2">
           {ACTION_BUTTONS.map((action) => (
             <button key={action.label} className="btn-secondary flex w-full items-center justify-center gap-2">
-              <React.Suspense fallback={<div className="h-5 w-5" />}>
-                <IconWrapper icon={action.icon} className="h-5 w-5" />
-              <Icon name={action.icon} className="h-5 w-5" /
+              <Icon name={action.icon} className="h-5 w-5" />
+              {action.label}
+            </button>
           ))}
         </div>
       </div>

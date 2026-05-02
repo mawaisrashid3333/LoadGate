@@ -41,7 +41,7 @@ export default function Sidebar() {
       <div className="mb-8 flex items-center gap-3">
         <img src="/logo.png" alt="LoadGate" className="h-10 w-10" />
         <div>
-          <h1 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+          <h1 className="text-xl font-bold" style={{ color: '#EC6B1B' }}>
             LoadGate
           </h1>
           <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
