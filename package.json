@@ -1,0 +1,15 @@
+{
+  "name": "loadgate",
+  "version": "1.0.0",
+  "description": "Smart Vehicle Weighing & Access Control System",
+  "private": true,
+  "scripts": {
+    "dev": "powershell -ExecutionPolicy Bypass -File .\\run.ps1",
+    "setup": "node setup.js",
+    "backend": "cd backend && npm run dev",
+    "frontend": "cd frontend && npm run dev"
+  },
+  "keywords": ["vehicle", "weighing", "access-control", "iot"],
+  "author": "",
+  "license": "MIT"
+}

@@ -1,0 +1,15 @@
+/**
+ * Nodemon Configuration
+ * Auto-restart server during development
+ */
+
+module.exports = {
+  watch: ['src'],
+  ext: 'js',
+  ignore: ['node_modules'],
+  exec: 'node src/index.js',
+  delay: 500,
+  env: {
+    NODE_ENV: 'development',
+  },
+};

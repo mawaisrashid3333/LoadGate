@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+*.lock
+yarn.lock
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+build/
+dist/
+.next/
+out/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Uploads & Storage
+uploads/
+storage/
+public/uploads/
+
+# Database
+*.db
+*.sqlite
+
+# Cache
+.cache/
+.eslintcache
