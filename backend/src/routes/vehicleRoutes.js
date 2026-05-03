@@ -11,6 +11,9 @@ const router = express.Router();
 // Get all records
 router.get('/', VehicleController.getAllRecords);
 
+// Export records
+router.get('/export', VehicleController.exportRecords);
+
 // Get analytics
 router.get('/analytics/summary', VehicleController.getAnalytics);
 

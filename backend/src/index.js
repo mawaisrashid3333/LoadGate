@@ -16,6 +16,7 @@ const irEventService = require('./services/irEventService');
 const vehicleRoutes = require('./routes/vehicleRoutes');
 const arduinoRoutes = require('./routes/arduinoRoutes');
 const cameraRoutes = require('./routes/cameraRoutes');
+const systemRoutes = require('./routes/systemRoutes');
 
 // Initialize Express app
 const app = express();
@@ -77,6 +78,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/arduino', arduinoRoutes);
 app.use('/api/camera', cameraRoutes);
+app.use('/api/system', systemRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

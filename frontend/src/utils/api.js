@@ -21,6 +21,7 @@ export const vehicleAPI = {
   create: (data) => apiClient.post('/vehicles', data),
   delete: (id) => apiClient.delete(`/vehicles/${id}`),
   getAnalytics: (days) => apiClient.get(`/vehicles/analytics/summary?days=${days}`),
+  export: (params) => apiClient.get('/vehicles/export', { params, responseType: 'blob' }),
 };
 
 // Arduino API

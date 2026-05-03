@@ -7,10 +7,54 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '@/context/ThemeContext';
+import { checkLoadingScreen } from '@/utils/loadingScreenChecker';
 
 export default function LoadingScreen({ message = 'Loading...' }) {
   const { isDark } = useTheme();
   const [progress, setProgress] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    
+    // Report health status after component is fully rendered
+    // Delay to allow React to fully paint the component
+    const healthCheckTimer = setTimeout(() => {
+      try {
+        const status = checkLoadingScreen();
+        
+        // More detailed logging
+        if (status.isWorking) {
+          console.log('✅ LoadingScreen is fully operational', {
+            isLoaded: status.isLoaded,
+            isRendered: status.isRendered,
+            hasStyles: status.hasStyles,
+            hasAnimations: status.hasAnimations,
+          });
+        } else if (status.isComputedByReact) {
+          console.log('✅ LoadingScreen component exists and will render (currently conditional/hidden)', {
+            status: 'Ready',
+            isComputedByReact: true,
+          });
+        } else {
+          console.warn('⚠️ LoadingScreen may have issues:', {
+            errors: status.errors,
+            warnings: status.warnings,
+            diagnostics: {
+              isLoaded: status.isLoaded,
+              isRendered: status.isRendered,
+              hasStyles: status.hasStyles,
+              hasAnimations: status.hasAnimations,
+            }
+          });
+        }
+      } catch (error) {
+        console.warn('LoadingScreen health check error:', error);
+      }
+    }, 500); // Increased delay to 500ms to ensure full render
+    
+    return () => clearTimeout(healthCheckTimer);
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -23,6 +67,7 @@ export default function LoadingScreen({ message = 'Loading...' }) {
 
   return (
     <div
+      id="loading-screen"
       className={`fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden ${
         isDark ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900' : 'bg-gradient-to-br from-gray-50 via-white to-gray-50'
       }`}
@@ -168,23 +213,25 @@ export default function LoadingScreen({ message = 'Loading...' }) {
         </p>
       </div>
 
-      {/* Floating Particles */}
-      <div className="absolute inset-0 pointer-events-none">
-        {[...Array(5)].map((_, i) => (
-          <div
-            key={`particle-${i}`}
-            className="absolute w-1 h-1 rounded-full"
-            style={{
-              backgroundColor: accentColor,
-              opacity: 0.5,
-              animation: `float-particle 4s infinite linear`,
-              animationDelay: `${i * 0.8}s`,
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-            }}
-          />
-        ))}
-      </div>
+      {/* Floating Particles - Client side only to prevent hydration mismatch */}
+      {mounted && (
+        <div className="absolute inset-0 pointer-events-none">
+          {[...Array(5)].map((_, i) => (
+            <div
+              key={`particle-${i}`}
+              className="absolute w-1 h-1 rounded-full"
+              style={{
+                backgroundColor: accentColor,
+                opacity: 0.5,
+                animation: `float-particle 4s infinite linear`,
+                animationDelay: `${i * 0.8}s`,
+                left: `${Math.random() * 100}%`,
+                top: `${Math.random() * 100}%`,
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       <style>{`
         @keyframes spin {

@@ -78,7 +78,7 @@ export default function Sidebar() {
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
-          <Icon name={isDark ? 'MdSun' : 'MdNightlight'} className="h-5 w-5" />
+          <Icon name={isDark ? 'MdWbSunny' : 'MdNightlight'} className="h-5 w-5" />
           <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
         </button>
       </div>
