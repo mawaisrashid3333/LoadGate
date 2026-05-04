@@ -281,7 +281,7 @@ export default function SettingsPage() {
                 : 'bg-yellow-50 border-yellow-300 text-yellow-700 hover:bg-yellow-100'
             } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            <Icon name="MdTest" className="h-5 w-5" />
+            <Icon name="MdSpeed" className="h-5 w-5" />
             Test Barrier
           </button>
           <button

@@ -9,7 +9,6 @@ import React, { useEffect, useState } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import Icon from './Icon';
 import { vehicleAPI, arduinoAPI } from '../utils/api';
-import LoadingScreen from './LoadingScreen';
 
 export default function Dashboard() {
   const { isDark } = useTheme();
@@ -121,10 +120,6 @@ export default function Dashboard() {
       [period]: parseInt(value) || 0,
     });
   };
-
-  if (loading) {
-    return <LoadingScreen message="Loading Dashboard..." />;
-  }
 
   return (
     <div className="space-y-6">

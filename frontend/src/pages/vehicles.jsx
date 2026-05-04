@@ -8,22 +8,21 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import Icon from '@/components/Icon';
+import ExportModal from '@/components/ExportModal';
 import { vehicleAPI } from '@/utils/api';
-import LoadingScreen from '@/components/LoadingScreen';
 
 export default function VehiclesPage() {
   const { isDark } = useTheme();
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [formatDropdownOpen, setFormatDropdownOpen] = useState(false);
   const [totalRecords, setTotalRecords] = useState(0);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exporting, setExporting] = useState(false);
   
   // Search and Filter States
   const [searchPlate, setSearchPlate] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
-  const [exportFormat, setExportFormat] = useState('');
-  const [exporting, setExporting] = useState(false);
   const [filters, setFilters] = useState({
     status: 'all',
     weightMin: '',
@@ -35,21 +34,18 @@ export default function VehiclesPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
 
-  // Close dropdowns when clicking outside
+  // Close sort dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (!e.target.closest('[data-dropdown="format"]')) {
-        setFormatDropdownOpen(false);
-      }
       if (!e.target.closest('[data-dropdown="sort"]')) {
         setSortDropdownOpen(false);
       }
     };
-    if (formatDropdownOpen || sortDropdownOpen) {
+    if (sortDropdownOpen) {
       document.addEventListener('click', handleClickOutside);
       return () => document.removeEventListener('click', handleClickOutside);
     }
-  }, [formatDropdownOpen, sortDropdownOpen]);
+  }, [sortDropdownOpen]);
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -87,61 +83,63 @@ export default function VehiclesPage() {
   const totalPages = Math.ceil(totalRecords / pageSize);
 
   // Export function - calls backend API
-  const handleExport = async () => {
-    if (vehicles.length === 0 || !exportFormat) return;
-    
+  const handleExport = async (exportParams) => {
     setExporting(true);
     try {
-      const params = {
-        format: exportFormat,
-        page: currentPage,
-        limit: pageSize,
-        status: filters.status !== 'all' ? filters.status : undefined,
-        weightMin: filters.weightMin ? parseFloat(filters.weightMin) : undefined,
-        weightMax: filters.weightMax ? parseFloat(filters.weightMax) : undefined,
-        dateFrom: filters.dateFrom || undefined,
-        dateTo: filters.dateTo || undefined,
-        search: searchPlate || undefined,
-        sort: sortBy || undefined,
+      console.log('Export config:', exportParams);
+      
+      if (!exportParams.records || exportParams.records.length === 0) {
+        alert('No records to export');
+        return;
+      }
+
+      const { format, records } = exportParams;
+
+      // Call backend export endpoint
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/vehicles/export?format=${format}&limit=${records.length}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Export failed');
+      }
+
+      // Get the appropriate filename and MIME type based on format
+      const formatMap = {
+        csv: { ext: 'csv', type: 'text/csv' },
+        excel: { ext: 'xlsx', type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+        word: { ext: 'docx', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+        pdf: { ext: 'pdf', type: 'application/pdf' },
       };
 
-      // Remove undefined values
-      Object.keys(params).forEach(key => params[key] === undefined && delete params[key]);
+      const fileInfo = formatMap[format] || formatMap.csv;
+      const filename = `vehicles-${new Date().toISOString().split('T')[0]}.${fileInfo.ext}`;
 
-      const res = await vehicleAPI.export(params);
-      
-      // Handle file download
-      const url = window.URL.createObjectURL(new Blob([res.data]));
+      // Download the file
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      const mimeType = {
-        csv: 'text/csv',
-        excel: 'application/vnd.ms-excel',
-        word: 'application/msword',
-        pdf: 'application/pdf',
-      };
-      const ext = {
-        csv: 'csv',
-        excel: 'xls',
-        word: 'doc',
-        pdf: 'pdf',
-      };
-      link.setAttribute('download', `vehicles-${new Date().toISOString().split('T')[0]}.${ext[exportFormat]}`);
+      link.setAttribute('download', filename);
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
       URL.revokeObjectURL(url);
+
+      console.log(`✅ Exported ${records.length} records as ${format}`);
     } catch (error) {
-      console.error('Error exporting:', error);
+      console.error('❌ Error exporting:', error);
       alert('Failed to export. Please try again.');
     } finally {
       setExporting(false);
     }
   };
-
-  if (loading) {
-    return <LoadingScreen message="Loading Vehicles..." />;
-  }
 
   return (
     <div className="space-y-6">
@@ -151,93 +149,18 @@ export default function VehiclesPage() {
           Vehicle Records
         </h1>
         <div className="flex gap-2 items-center">
-          {/* Custom Format Dropdown */}
-          <div className="relative" data-dropdown="format">
-            <button
-              onClick={() => setFormatDropdownOpen(!formatDropdownOpen)}
-              className={`px-4 py-2 rounded font-medium transition flex items-center gap-2 border ${
-                isDark
-                  ? 'bg-slate-700 border-gray-600 text-white hover:bg-slate-600'
-                  : 'bg-white border-gray-300 text-slate-900 hover:bg-gray-50'
-              }`}
-            >
-              <Icon name="MdFileDownload" className="h-4 w-4" />
-              {exportFormat ? (
-                <>
-                  {exportFormat === 'csv' && 'CSV'}
-                  {exportFormat === 'excel' && 'Excel'}
-                  {exportFormat === 'word' && 'Word'}
-                  {exportFormat === 'pdf' && 'PDF'}
-                </>
-              ) : (
-                'Select Format'
-              )}
-              <Icon
-                name={formatDropdownOpen ? 'MdExpandLess' : 'MdExpandMore'}
-                className="h-4 w-4"
-              />
-            </button>
-
-            {/* Dropdown Menu */}
-            {formatDropdownOpen && (
-              <div
-                className={`absolute top-full left-0 mt-2 w-56 rounded-lg border shadow-xl z-50 overflow-hidden ${
-                  isDark
-                    ? 'bg-slate-800 border-gray-700'
-                    : 'bg-white border-gray-200'
-                }`}
-              >
-                {[
-                  { value: 'csv', label: 'CSV Format', icon: 'MdDescription' },
-                  { value: 'excel', label: 'Excel Sheet', icon: 'MdTableChart' },
-                  { value: 'word', label: 'Word Document', icon: 'MdArticle' },
-                  { value: 'pdf', label: 'PDF Document', icon: 'MdPictureAsPdf' },
-                ].map((format) => (
-                  <button
-                    key={format.value}
-                    onClick={() => {
-                      setExportFormat(format.value);
-                      setFormatDropdownOpen(false);
-                    }}
-                    className={`w-full text-left px-4 py-3 flex items-center gap-3 transition ${
-                      exportFormat === format.value
-                        ? isDark
-                          ? 'bg-[#EC6B1B] text-white'
-                          : 'bg-[#EC6B1B] text-white'
-                        : isDark
-                        ? 'text-gray-200 hover:bg-slate-700'
-                        : 'text-slate-900 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Icon name={format.icon} className="h-5 w-5 flex-shrink-0" />
-                    <div className="flex-1">
-                      <div className="font-medium">{format.label}</div>
-                      <div className="text-xs opacity-75">
-                        {format.value === 'csv' && 'Comma-separated values'}
-                        {format.value === 'excel' && 'Microsoft Excel spreadsheet'}
-                        {format.value === 'word' && 'Microsoft Word document'}
-                        {format.value === 'pdf' && 'Portable document format'}
-                      </div>
-                    </div>
-                    {exportFormat === format.value && (
-                      <Icon name="MdCheckCircle" className="h-5 w-5 flex-shrink-0" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Export Button */}
+          {/* Export Button - Opens Modal */}
           <button
-            onClick={handleExport}
-            disabled={vehicles.length === 0 || !exportFormat || exporting}
-            className={`px-4 py-2 rounded font-medium transition flex items-center gap-2 ${
-              vehicles.length === 0 || !exportFormat || exporting
+            onClick={() => setShowExportModal(true)}
+            disabled={totalRecords === 0 || exporting}
+            className={`px-4 py-2 rounded font-medium transition flex items-center gap-2 border ${
+              totalRecords === 0 || exporting
                 ? isDark
-                  ? 'bg-slate-700 text-gray-500 cursor-not-allowed'
-                  : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                : 'bg-green-500 text-white hover:bg-green-600'
+                  ? 'bg-slate-700 border-gray-600 text-gray-500 cursor-not-allowed'
+                  : 'bg-gray-200 border-gray-300 text-gray-500 cursor-not-allowed'
+                : isDark
+                ? 'bg-green-900/30 border-green-600 text-green-400 hover:bg-green-900/50'
+                : 'bg-green-50 border-green-300 text-green-700 hover:bg-green-100'
             }`}
           >
             <Icon name="MdFileDownload" className="h-5 w-5" />
@@ -245,6 +168,15 @@ export default function VehiclesPage() {
           </button>
         </div>
       </div>
+
+      {/* Export Modal */}
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        onExport={handleExport}
+        isDark={isDark}
+        totalRecords={totalRecords}
+      />
 
       {/* Search Bar with Filters Toggle */}
       <div className={`rounded-lg border ${isDark ? 'border-gray-700 bg-slate-800' : 'border-gray-200 bg-white'} p-4 shadow-lg`}>

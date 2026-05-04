@@ -5,11 +5,12 @@
 
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import Icon from '@/components/Icon';
+import ExportFormatDropdown from '@/components/ExportFormatDropdown';
+import { exportChartToImage } from '@/utils/chartExport';
 import { vehicleAPI } from '@/utils/api';
-import LoadingScreen from '@/components/LoadingScreen';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -46,10 +47,49 @@ export default function AnalyticsPage() {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState(7);
+  const [selectedFormat, setSelectedFormat] = useState('png');
+  const [exportingChart, setExportingChart] = useState(null);
+
+  // Chart refs for export
+  const chartRefs = {
+    weightTrend: useRef(null),
+    dailyVehicles: useRef(null),
+    statusDistribution: useRef(null),
+    statusBreakdown: useRef(null),
+    performanceMetrics: useRef(null),
+    hourlyDistribution: useRef(null),
+  };
+
+  // Export chart handler
+  const handleExportChart = async (chartName, displayName) => {
+    try {
+      setExportingChart(chartName);
+      const element = chartRefs[chartName]?.current;
+      if (!element) {
+        throw new Error('Chart element not found');
+      }
+      await exportChartToImage(element, selectedFormat, displayName);
+    } catch (error) {
+      console.error('❌ Export failed:', error);
+      alert(`Failed to export chart: ${error.message}`);
+    } finally {
+      setExportingChart(null);
+    }
+  };
 
   // Generate mock chart data based on analytics
   const generateChartData = useMemo(() => {
-    if (!analytics) return null;
+    if (!analytics) {
+      return null;
+    }
+
+    // Parse average weight from string to number
+    const avgWeight = parseFloat(analytics.averageWeight);
+
+    if (isNaN(avgWeight)) {
+      console.error('❌ Average weight is NaN! Value:', analytics.averageWeight);
+      return null;
+    }
 
     const days = Array.from({ length: timeRange }, (_, i) => {
       const date = new Date();
@@ -57,13 +97,17 @@ export default function AnalyticsPage() {
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     });
 
+    const dailyWeights = Array.from({ length: timeRange }, () =>
+      Math.floor(avgWeight + Math.random() * 20 - 10)
+    );
+    
+
+
     return {
       days,
+      dailyWeights,
       dailyVehicles: Array.from({ length: timeRange }, () =>
         Math.floor(Math.random() * (analytics.totalVehicles / timeRange) + 5)
-      ),
-      dailyWeights: Array.from({ length: timeRange }, () =>
-        Math.floor(analytics.averageWeight + Math.random() * 20 - 10)
       ),
       hourlyVehicles: Array.from({ length: 24 }, (_, i) => ({
         hour: `${i.toString().padStart(2, '0')}:00`,
@@ -102,10 +146,6 @@ export default function AnalyticsPage() {
 
     fetchAnalytics();
   }, [timeRange]);
-
-  if (loading) {
-    return <LoadingScreen message="Loading Analytics..." />;
-  }
 
   if (!analytics || !generateChartData) {
     return (
@@ -235,37 +275,67 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Line Chart - Weight Trend */}
         <div className={`rounded-lg border ${isDark ? 'border-gray-700 bg-slate-800' : 'border-gray-200 bg-white'} p-6 shadow-lg`}>
-          <h2 className={`text-xl font-bold mb-4 ${isDark ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-            <Icon name="MdTrendingUp" className="h-5 w-5" />
-            Weight Trend
-          </h2>
-          <Line
+          <div className="flex items-center justify-between mb-4">
+            <h2 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
+              <Icon name="MdTrendingUp" className="h-5 w-5" />
+              Weight Trend
+            </h2>
+            <div className="flex items-center gap-2">
+              <ExportFormatDropdown isDark={isDark} onSelect={setSelectedFormat} />
+              <button
+                onClick={() => handleExportChart('weightTrend', 'Weight-Trend')}
+                disabled={exportingChart === 'weightTrend'}
+                className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${
+                  exportingChart === 'weightTrend'
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : isDark
+                    ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                    : 'bg-orange-500 hover:bg-orange-600 text-white'
+                }`}
+              >
+                <Icon name={exportingChart === 'weightTrend' ? 'MdHourglassEmpty' : 'MdFileDownload'} className="h-4 w-4" />
+                <span className="text-sm">Export</span>
+              </button>
+            </div>
+          </div>
+          <div ref={chartRefs.weightTrend}>
+            {generateChartData && (
+              <>
+                <Line
             data={{
               labels: generateChartData.days,
               datasets: [
                 {
                   label: 'Average Weight (kg)',
                   data: generateChartData.dailyWeights,
-                  borderColor: chartColors.primary,
-                  backgroundColor: `${chartColors.primary}20`,
-                  borderWidth: 3,
+                  borderColor: '#EC6B1B',
+                  backgroundColor: 'rgba(236, 107, 27, 0.15)',
+                  borderWidth: 4,
                   fill: true,
                   tension: 0.4,
-                  pointRadius: 5,
-                  pointBackgroundColor: chartColors.primary,
+                  pointRadius: 6,
+                  pointBackgroundColor: '#EC6B1B',
                   pointBorderColor: isDark ? '#1e293b' : '#ffffff',
                   pointBorderWidth: 2,
-                  pointHoverRadius: 7,
+                  pointHoverRadius: 8,
                 },
               ],
             }}
             options={{
               ...chartBaseOptions,
+              responsive: true,
+              maintainAspectRatio: true,
               scales: {
                 y: {
                   ...chartBaseOptions.scales.y,
                   type: 'linear',
+                  position: 'left',
                   beginAtZero: false,
+                  min: analytics && analytics.averageWeight ? Math.floor(parseFloat(analytics.averageWeight) * 0.5) : 0,
+                  max: analytics && analytics.averageWeight ? Math.ceil(parseFloat(analytics.averageWeight) * 1.5) : 100,
+                  ticks: {
+                    color: chartColors.text,
+                  },
                 },
                 x: {
                   ...chartBaseOptions.scales.x,
@@ -277,15 +347,38 @@ export default function AnalyticsPage() {
               },
             }}
           />
+            </>
+          )}
+          </div>
         </div>
 
         {/* Bar Chart - Daily Vehicles */}
         <div className={`rounded-lg border ${isDark ? 'border-gray-700 bg-slate-800' : 'border-gray-200 bg-white'} p-6 shadow-lg`}>
-          <h2 className={`text-xl font-bold mb-4 ${isDark ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-            <Icon name="MdBarChart" className="h-5 w-5" />
-            Vehicles Per Day
-          </h2>
-          <Bar
+          <div className="flex items-center justify-between mb-4">
+            <h2 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
+              <Icon name="MdBarChart" className="h-5 w-5" />
+              Vehicles Per Day
+            </h2>
+            <div className="flex items-center gap-2">
+              <ExportFormatDropdown isDark={isDark} onSelect={setSelectedFormat} />
+              <button
+                onClick={() => handleExportChart('dailyVehicles', 'Daily-Vehicles')}
+                disabled={exportingChart === 'dailyVehicles'}
+                className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${
+                  exportingChart === 'dailyVehicles'
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : isDark
+                    ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                    : 'bg-orange-500 hover:bg-orange-600 text-white'
+                }`}
+              >
+                <Icon name={exportingChart === 'dailyVehicles' ? 'MdHourglassEmpty' : 'MdFileDownload'} className="h-4 w-4" />
+                <span className="text-sm">Export</span>
+              </button>
+            </div>
+          </div>
+          <div ref={chartRefs.dailyVehicles}>
+            <Bar
             data={{
               labels: generateChartData.days,
               datasets: [
@@ -310,15 +403,36 @@ export default function AnalyticsPage() {
             }}
             options={chartBaseOptions}
           />
+          </div>
         </div>
 
         {/* Pie Chart - Allowed vs Blocked */}
         <div className={`rounded-lg border ${isDark ? 'border-gray-700 bg-slate-800' : 'border-gray-200 bg-white'} p-6 shadow-lg`}>
-          <h2 className={`text-xl font-bold mb-4 ${isDark ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-            <Icon name="MdPieChart" className="h-5 w-5" />
-            Status Distribution
-          </h2>
-          <Pie
+          <div className="flex items-center justify-between mb-4">
+            <h2 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
+              <Icon name="MdPieChart" className="h-5 w-5" />
+              Status Distribution
+            </h2>
+            <div className="flex items-center gap-2">
+              <ExportFormatDropdown isDark={isDark} onSelect={setSelectedFormat} />
+              <button
+                onClick={() => handleExportChart('statusDistribution', 'Status-Distribution')}
+                disabled={exportingChart === 'statusDistribution'}
+                className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${
+                  exportingChart === 'statusDistribution'
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : isDark
+                    ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                    : 'bg-orange-500 hover:bg-orange-600 text-white'
+                }`}
+              >
+                <Icon name={exportingChart === 'statusDistribution' ? 'MdHourglassEmpty' : 'MdFileDownload'} className="h-4 w-4" />
+                <span className="text-sm">Export</span>
+              </button>
+            </div>
+          </div>
+          <div ref={chartRefs.statusDistribution}>
+            <Pie
             data={{
               labels: ['Allowed', 'Blocked'],
               datasets: [
@@ -342,15 +456,36 @@ export default function AnalyticsPage() {
               },
             }}
           />
+          </div>
         </div>
 
         {/* Doughnut Chart - Status Breakdown */}
         <div className={`rounded-lg border ${isDark ? 'border-gray-700 bg-slate-800' : 'border-gray-200 bg-white'} p-6 shadow-lg`}>
-          <h2 className={`text-xl font-bold mb-4 ${isDark ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-            <Icon name="MdDonut" className="h-5 w-5" />
-            Status Breakdown
-          </h2>
-          <Doughnut
+          <div className="flex items-center justify-between mb-4">
+            <h2 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
+              <Icon name="MdPieChart" className="h-5 w-5" />
+              Status Breakdown
+            </h2>
+            <div className="flex items-center gap-2">
+              <ExportFormatDropdown isDark={isDark} onSelect={setSelectedFormat} />
+              <button
+                onClick={() => handleExportChart('statusBreakdown', 'Status-Breakdown')}
+                disabled={exportingChart === 'statusBreakdown'}
+                className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${
+                  exportingChart === 'statusBreakdown'
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : isDark
+                    ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                    : 'bg-orange-500 hover:bg-orange-600 text-white'
+                }`}
+              >
+                <Icon name={exportingChart === 'statusBreakdown' ? 'MdHourglassEmpty' : 'MdFileDownload'} className="h-4 w-4" />
+                <span className="text-sm">Export</span>
+              </button>
+            </div>
+          </div>
+          <div ref={chartRefs.statusBreakdown}>
+            <Doughnut
             data={{
               labels: ['Allowed', 'Blocked'],
               datasets: [
@@ -375,15 +510,36 @@ export default function AnalyticsPage() {
               },
             }}
           />
+          </div>
         </div>
 
         {/* Radar Chart - Performance Metrics */}
         <div className={`rounded-lg border ${isDark ? 'border-gray-700 bg-slate-800' : 'border-gray-200 bg-white'} p-6 shadow-lg`}>
-          <h2 className={`text-xl font-bold mb-4 ${isDark ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-            <Icon name="MdRadar" className="h-5 w-5" />
-            Performance Metrics
-          </h2>
-          <Radar
+          <div className="flex items-center justify-between mb-4">
+            <h2 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
+              <Icon name="MdRadar" className="h-5 w-5" />
+              Performance Metrics
+            </h2>
+            <div className="flex items-center gap-2">
+              <ExportFormatDropdown isDark={isDark} onSelect={setSelectedFormat} />
+              <button
+                onClick={() => handleExportChart('performanceMetrics', 'Performance-Metrics')}
+                disabled={exportingChart === 'performanceMetrics'}
+                className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${
+                  exportingChart === 'performanceMetrics'
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : isDark
+                    ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                    : 'bg-orange-500 hover:bg-orange-600 text-white'
+                }`}
+              >
+                <Icon name={exportingChart === 'performanceMetrics' ? 'MdHourglassEmpty' : 'MdFileDownload'} className="h-4 w-4" />
+                <span className="text-sm">Export</span>
+              </button>
+            </div>
+          </div>
+          <div ref={chartRefs.performanceMetrics}>
+            <Radar
             data={{
               labels: ['Throughput', 'Accuracy', 'Reliability', 'Efficiency', 'Availability'],
               datasets: [
@@ -422,15 +578,36 @@ export default function AnalyticsPage() {
               },
             }}
           />
+          </div>
         </div>
 
         {/* Hourly Distribution */}
         <div className={`rounded-lg border ${isDark ? 'border-gray-700 bg-slate-800' : 'border-gray-200 bg-white'} p-6 shadow-lg`}>
-          <h2 className={`text-xl font-bold mb-4 ${isDark ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-            <Icon name="MdSchedule" className="h-5 w-5" />
-            Hourly Distribution
-          </h2>
-          <Bar
+          <div className="flex items-center justify-between mb-4">
+            <h2 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
+              <Icon name="MdSchedule" className="h-5 w-5" />
+              Hourly Distribution
+            </h2>
+            <div className="flex items-center gap-2">
+              <ExportFormatDropdown isDark={isDark} onSelect={setSelectedFormat} />
+              <button
+                onClick={() => handleExportChart('hourlyDistribution', 'Hourly-Distribution')}
+                disabled={exportingChart === 'hourlyDistribution'}
+                className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${
+                  exportingChart === 'hourlyDistribution'
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : isDark
+                    ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                    : 'bg-orange-500 hover:bg-orange-600 text-white'
+                }`}
+              >
+                <Icon name={exportingChart === 'hourlyDistribution' ? 'MdHourglassEmpty' : 'MdFileDownload'} className="h-4 w-4" />
+                <span className="text-sm">Export</span>
+              </button>
+            </div>
+          </div>
+          <div ref={chartRefs.hourlyDistribution}>
+            <Bar
             data={{
               labels: generateChartData.hourlyVehicles.map((h) => h.hour),
               datasets: [
@@ -456,6 +633,7 @@ export default function AnalyticsPage() {
               },
             }}
           />
+          </div>
         </div>
       </div>
     </div>

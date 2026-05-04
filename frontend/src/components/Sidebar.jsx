@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '@/context/ThemeContext';
+import { useAuth } from '@/context/AuthContext';
 import Link from 'next/link';
 import Icon from './Icon';
 
@@ -19,6 +20,7 @@ const navItems = [
 
 export default function Sidebar() {
   const { isDark, toggleTheme } = useTheme();
+  const { user, logout } = useAuth();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -35,7 +37,7 @@ export default function Sidebar() {
         isDark
           ? 'border-gray-700 bg-slate-800'
           : 'border-gray-200 bg-white'
-      } p-6`}
+      } p-6 flex flex-col`}
     >
       {/* Logo */}
       <div className="mb-8 flex items-center gap-3">
@@ -50,8 +52,20 @@ export default function Sidebar() {
         </div>
       </div>
 
+      {/* User Info */}
+      {user && (
+        <div className={`mb-6 rounded-lg p-3 ${isDark ? 'bg-slate-700' : 'bg-gray-100'}`}>
+          <p className={`text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+            Logged in as
+          </p>
+          <p className={`text-sm font-bold ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+            {user.username}
+          </p>
+        </div>
+      )}
+
       {/* Navigation */}
-      <nav className="space-y-2">
+      <nav className="flex-1 space-y-2">
         {navItems.map((item) => (
           <Link
             key={item.href}
@@ -68,8 +82,8 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Theme Toggle */}
-      <div className={`mt-8 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'} pt-4`}>
+      {/* Theme Toggle & Logout */}
+      <div className={`border-t ${isDark ? 'border-gray-700' : 'border-gray-200'} space-y-2 pt-4`}>
         <button
           onClick={toggleTheme}
           className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 transition-colors ${
@@ -80,6 +94,14 @@ export default function Sidebar() {
         >
           <Icon name={isDark ? 'MdWbSunny' : 'MdNightlight'} className="h-5 w-5" />
           <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
+        </button>
+
+        <button
+          onClick={logout}
+          className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-red-500 transition-colors hover:bg-red-500/10"
+        >
+          <Icon name="MdLogout" className="h-5 w-5" />
+          <span>Logout</span>
         </button>
       </div>
     </aside>

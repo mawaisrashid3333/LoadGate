@@ -4,6 +4,9 @@
  */
 
 const Vehicle = require('../models/Vehicle');
+const ExcelJS = require('exceljs');
+const PDFDocument = require('pdfkit');
+const { Document, Packer, Table, TableRow, TableCell, Paragraph, HeadingLevel, BorderStyle, VerticalAlign, AlignmentType, PageBreak, UnderlineType } = require('docx');
 
 class VehicleController {
   /**
@@ -212,10 +215,20 @@ class VehicleController {
    */
   static async exportRecords(req, res) {
     try {
+      console.log('📥 Export request received:', {
+        format: req.query.format,
+        filters: {
+          status: req.query.status,
+          search: req.query.search,
+          weightMin: req.query.weightMin,
+          weightMax: req.query.weightMax,
+          dateFrom: req.query.dateFrom,
+          dateTo: req.query.dateTo,
+        },
+        sort: req.query.sort,
+      });
+
       const format = req.query.format || 'csv';
-      const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 10;
-      const skip = (page - 1) * limit;
       const status = req.query.status;
       const search = req.query.search;
       const sort = req.query.sort || 'timestamp-desc';
@@ -223,6 +236,7 @@ class VehicleController {
       const weightMax = req.query.weightMax;
       const dateFrom = req.query.dateFrom;
       const dateTo = req.query.dateTo;
+      const limit = parseInt(req.query.limit) || 10;
 
       // Build query (same as getAllRecords)
       let query = {};
@@ -243,6 +257,8 @@ class VehicleController {
         }
       }
 
+      console.log('🔍 Database query:', query);
+
       // Parse sort
       let sortObj = { timestamp: -1 };
       if (sort) {
@@ -251,33 +267,36 @@ class VehicleController {
         sortObj = { [field]: sortOrder };
       }
 
+      console.log('📊 Sort object:', sortObj);
+
       // Get records
       const records = await Vehicle.find(query)
         .sort(sortObj)
         .limit(limit)
-        .skip(skip)
         .lean();
 
-      let fileContent;
+      console.log(`📦 Found ${records.length} records`);
+
+      let fileBuffer;
       let contentType;
       let filename;
 
       // Generate format-specific content
       if (format === 'csv') {
-        fileContent = this.generateCSV(records);
+        fileBuffer = VehicleController.generateCSV(records);
         contentType = 'text/csv;charset=utf-8;';
         filename = `vehicles-${new Date().toISOString().split('T')[0]}.csv`;
       } else if (format === 'excel') {
-        fileContent = this.generateExcel(records);
-        contentType = 'application/vnd.ms-excel;charset=utf-8;';
-        filename = `vehicles-${new Date().toISOString().split('T')[0]}.xls`;
+        fileBuffer = await VehicleController.generateExcel(records);
+        contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        filename = `vehicles-${new Date().toISOString().split('T')[0]}.xlsx`;
       } else if (format === 'word') {
-        fileContent = this.generateWord(records);
-        contentType = 'application/msword;charset=utf-8;';
-        filename = `vehicles-${new Date().toISOString().split('T')[0]}.doc`;
+        fileBuffer = await VehicleController.generateWord(records);
+        contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        filename = `vehicles-${new Date().toISOString().split('T')[0]}.docx`;
       } else if (format === 'pdf') {
-        fileContent = this.generatePDF(records);
-        contentType = 'application/pdf;charset=utf-8;';
+        fileBuffer = await VehicleController.generatePDF(records);
+        contentType = 'application/pdf';
         filename = `vehicles-${new Date().toISOString().split('T')[0]}.pdf`;
       } else {
         return res.status(400).json({
@@ -286,13 +305,19 @@ class VehicleController {
         });
       }
 
+      console.log(`✅ Generated ${format} content, size: ${fileBuffer.length} bytes`);
+
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.setHeader('Content-Type', contentType);
-      res.send(fileContent);
+      res.send(fileBuffer);
+      
+      console.log('✅ Export sent successfully');
     } catch (error) {
+      console.error('❌ Export error:', error);
       res.status(500).json({
         success: false,
         error: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
       });
     }
   }
@@ -315,126 +340,254 @@ class VehicleController {
       csvContent += row.map((cell) => `"${cell}"`).join(',') + '\n';
     });
 
-    return csvContent;
+    return Buffer.from(csvContent, 'utf-8');
   }
 
   /**
-   * Generate Excel content (HTML format for compatibility)
+   * Generate Excel (.xlsx) file using ExcelJS
    */
-  static generateExcel(records) {
-    const headers = ['Date & Time', 'Weight (kg)', 'Status', 'Car Number', 'Vehicle Type'];
-    const rows = records.map((v) => [
-      new Date(v.timestamp).toLocaleString(),
-      v.weight,
-      v.status,
-      v.carNumber || '-',
-      v.vehicleType || '-',
-    ]);
+  static async generateExcel(records) {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Vehicle Records');
 
-    let excelContent = '<table><tr>';
-    headers.forEach((h) => {
-      excelContent += `<th>${h}</th>`;
+    // Add headers
+    const headers = ['Date & Time', 'Weight (kg)', 'Status', 'Car Number', 'Vehicle Type'];
+    worksheet.addRow(headers);
+
+    // Style header row
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEC6B1B' } };
+    headerRow.alignment = { horizontal: 'center', vertical: 'center' };
+
+    // Add data rows
+    records.forEach((v) => {
+      worksheet.addRow([
+        new Date(v.timestamp).toLocaleString(),
+        v.weight,
+        v.status,
+        v.carNumber || '-',
+        v.vehicleType || '-',
+      ]);
     });
-    excelContent += '</tr>';
 
-    rows.forEach((row) => {
-      excelContent += '<tr>';
-      row.forEach((cell) => {
-        excelContent += `<td>${cell}</td>`;
-      });
-      excelContent += '</tr>';
+    // Set column widths
+    worksheet.columns = [
+      { width: 20 },
+      { width: 15 },
+      { width: 12 },
+      { width: 15 },
+      { width: 15 },
+    ];
+
+    // Write to buffer
+    return await workbook.xlsx.writeBuffer();
+  }
+
+  /**
+   * Generate Word (.docx) file - using HTML-based approach
+   */
+  static async generateWord(records) {
+    const headers = ['Date & Time', 'Weight (kg)', 'Status', 'Car Number', 'Vehicle Type'];
+    
+    // Create table header row
+    const headerCells = headers.map(
+      (h) =>
+        new TableCell({
+          children: [new Paragraph({ text: h, bold: true, color: 'FFFFFF' })],
+          shading: { fill: 'EC6B1B' },
+          verticalAlign: VerticalAlign.CENTER,
+        })
+    );
+
+    const headerRow = new TableRow({
+      children: headerCells,
+      height: { value: 400, rule: 'atLeast' },
     });
-    excelContent += '</table>';
 
-    return excelContent;
+    // Create table data rows
+    const dataRows = records.map(
+      (v, idx) =>
+        new TableRow({
+          children: [
+            new TableCell({
+              children: [new Paragraph(new Date(v.timestamp).toLocaleString())],
+              shading: { fill: idx % 2 === 0 ? 'F9F9F9' : 'FFFFFF' },
+            }),
+            new TableCell({
+              children: [new Paragraph(String(v.weight))],
+              shading: { fill: idx % 2 === 0 ? 'F9F9F9' : 'FFFFFF' },
+            }),
+            new TableCell({
+              children: [new Paragraph(v.status)],
+              shading: { fill: idx % 2 === 0 ? 'F9F9F9' : 'FFFFFF' },
+            }),
+            new TableCell({
+              children: [new Paragraph(v.carNumber || '-')],
+              shading: { fill: idx % 2 === 0 ? 'F9F9F9' : 'FFFFFF' },
+            }),
+            new TableCell({
+              children: [new Paragraph(v.vehicleType || '-')],
+              shading: { fill: idx % 2 === 0 ? 'F9F9F9' : 'FFFFFF' },
+            }),
+          ],
+        })
+    );
+
+    // Create document
+    const doc = new Document({
+      sections: [
+        {
+          children: [
+            // Title
+            new Paragraph({
+              text: 'Vehicle Records Report',
+              heading: HeadingLevel.HEADING_1,
+              color: 'EC6B1B',
+              size: 48,
+              bold: true,
+              alignment: AlignmentType.CENTER,
+              spacing: { after: 400 },
+            }),
+
+            // Info section
+            new Paragraph({
+              text: `Generated on: ${new Date().toLocaleString()}`,
+              spacing: { after: 100 },
+            }),
+            new Paragraph({
+              text: `Total Records: ${records.length}`,
+              spacing: { after: 300 },
+            }),
+
+            // Table
+            new Table({
+              rows: [headerRow, ...dataRows],
+              width: { size: 100, type: 'percentage' },
+              borders: {
+                topBorder: { style: BorderStyle.SINGLE, size: 1, color: 'DDD' },
+                bottomBorder: { style: BorderStyle.SINGLE, size: 1, color: 'DDD' },
+                leftBorder: { style: BorderStyle.SINGLE, size: 1, color: 'DDD' },
+                rightBorder: { style: BorderStyle.SINGLE, size: 1, color: 'DDD' },
+                insideHorizontalBorder: { style: BorderStyle.SINGLE, size: 1, color: 'DDD' },
+                insideVerticalBorder: { style: BorderStyle.SINGLE, size: 1, color: 'DDD' },
+              },
+            }),
+
+            // Footer
+            new Paragraph({
+              text: '',
+              spacing: { before: 400 },
+            }),
+            new Paragraph({
+              text: 'This is an auto-generated report from LoadGate Vehicle Monitoring System',
+              alignment: AlignmentType.CENTER,
+              color: '666666',
+              size: 18,
+            }),
+          ],
+        },
+      ],
+    });
+
+    // Generate buffer
+    return await Packer.toBuffer(doc);
   }
 
   /**
-   * Generate Word content (HTML format)
+   * Generate PDF using PDFKit
    */
-  static generateWord(records) {
-    const headers = ['Date & Time', 'Weight (kg)', 'Status', 'Car Number', 'Vehicle Type'];
-    const rows = records.map((v) => [
-      new Date(v.timestamp).toLocaleString(),
-      v.weight,
-      v.status,
-      v.carNumber || '-',
-      v.vehicleType || '-',
-    ]);
+  static async generatePDF(records) {
+    return new Promise((resolve, reject) => {
+      try {
+        const doc = new PDFDocument({
+          size: 'A4',
+          margin: 50,
+        });
 
-    let wordContent = `
-      <html>
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            h1 { color: #EC6B1B; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-            th { background-color: #EC6B1B; color: white; }
-            tr:nth-child(even) { background-color: #f9f9f9; }
-          </style>
-        </head>
-        <body>
-          <h1>Vehicle Records Report</h1>
-          <p>Generated on: ${new Date().toLocaleString()}</p>
-          <p>Total Records: ${rows.length}</p>
-          <table>
-            <tr>
-              ${headers.map((h) => `<th>${h}</th>`).join('')}
-            </tr>
-            ${rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')}
-          </table>
-        </body>
-      </html>
-    `;
-    return wordContent;
-  }
+        const chunks = [];
 
-  /**
-   * Generate PDF content (HTML format - browser will convert)
-   */
-  static generatePDF(records) {
-    const headers = ['Date & Time', 'Weight (kg)', 'Status', 'Car Number', 'Vehicle Type'];
-    const rows = records.map((v) => [
-      new Date(v.timestamp).toLocaleString(),
-      v.weight,
-      v.status,
-      v.carNumber || '-',
-      v.vehicleType || '-',
-    ]);
+        doc.on('data', (chunk) => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', (err) => reject(err));
 
-    let pdfContent = `
-      <html>
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            h1 { color: #EC6B1B; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { padding: 10px; text-align: left; border: 1px solid #ddd; font-size: 12px; }
-            th { background-color: #EC6B1B; color: white; }
-            tr:nth-child(even) { background-color: #f9f9f9; }
-            .footer { margin-top: 30px; font-size: 10px; color: #666; }
-          </style>
-        </head>
-        <body>
-          <h1>Vehicle Records Report</h1>
-          <p><strong>Generated on:</strong> ${new Date().toLocaleString()}</p>
-          <p><strong>Total Records:</strong> ${rows.length}</p>
-          <table>
-            <tr>
-              ${headers.map((h) => `<th>${h}</th>`).join('')}
-            </tr>
-            ${rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')}
-          </table>
-          <div class="footer">
-            <p>This is an auto-generated report from LoadGate Vehicle Monitoring System</p>
-          </div>
-        </body>
-      </html>
-    `;
-    return pdfContent;
+        // Title
+        doc.fontSize(20).font('Helvetica-Bold').fillColor('#EC6B1B').text('Vehicle Records Report', { align: 'center' });
+        doc.moveDown();
+
+        // Info section
+        doc.fontSize(11).fillColor('#000000');
+        doc.text(`Generated on: ${new Date().toLocaleString()}`, { align: 'left' });
+        doc.text(`Total Records: ${records.length}`, { align: 'left' });
+        doc.moveDown();
+
+        // Table headers
+        const headers = ['Date & Time', 'Weight (kg)', 'Status', 'Car Number', 'Vehicle Type'];
+        const colWidth = (doc.page.width - 100) / headers.length;
+
+        // Draw header row
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#FFFFFF');
+        doc.rect(50, doc.y, doc.page.width - 100, 25).fill('#EC6B1B');
+        
+        let xPos = 50;
+        headers.forEach((header) => {
+          doc.fillColor('#FFFFFF').text(header, xPos + 5, doc.y - 22, {
+            width: colWidth - 10,
+            align: 'left',
+          });
+          xPos += colWidth;
+        });
+
+        doc.moveDown(1.5);
+
+        // Draw data rows
+        doc.fontSize(9).font('Helvetica').fillColor('#000000');
+        let rowNum = 0;
+
+        records.forEach((record) => {
+          const yStart = doc.y;
+          const rowHeight = 20;
+
+          // Alternate row background
+          if (rowNum % 2 === 0) {
+            doc.rect(50, yStart, doc.page.width - 100, rowHeight).fill('#f0f0f0');
+          }
+
+          const row = [
+            new Date(record.timestamp).toLocaleString(),
+            record.weight,
+            record.status,
+            record.carNumber || '-',
+            record.vehicleType || '-',
+          ];
+
+          xPos = 50;
+          row.forEach((cell, idx) => {
+            doc.fillColor('#000000').text(String(cell), xPos + 5, yStart + 5, {
+              width: colWidth - 10,
+              align: 'left',
+            });
+            xPos += colWidth;
+          });
+
+          doc.y = yStart + rowHeight;
+          rowNum++;
+
+          // Add new page if needed
+          if (doc.y > doc.page.height - 100) {
+            doc.addPage();
+          }
+        });
+
+        // Footer
+        doc.moveDown(2);
+        doc.fontSize(9).fillColor('#666666').text('LoadGate Vehicle Monitoring System - Auto-generated Report', { align: 'center' });
+
+        doc.end();
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
 }
 

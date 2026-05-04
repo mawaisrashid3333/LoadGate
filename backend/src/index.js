@@ -17,6 +17,7 @@ const vehicleRoutes = require('./routes/vehicleRoutes');
 const arduinoRoutes = require('./routes/arduinoRoutes');
 const cameraRoutes = require('./routes/cameraRoutes');
 const systemRoutes = require('./routes/systemRoutes');
+const authRoutes = require('./routes/authRoutes');
 
 // Initialize Express app
 const app = express();
@@ -75,6 +76,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/arduino', arduinoRoutes);
 app.use('/api/camera', cameraRoutes);

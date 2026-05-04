@@ -7,7 +7,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '@/context/ThemeContext';
+import { useLoading } from '@/context/LoadingContext';
 import dynamic from 'next/dynamic';
+import LoadingScreen from './LoadingScreen';
 
 // Dynamically import Sidebar to prevent SSR issues
 const Sidebar = dynamic(() => import('./Sidebar'), {
@@ -17,6 +19,7 @@ const Sidebar = dynamic(() => import('./Sidebar'), {
 
 export default function Layout({ children }) {
   const { isDark } = useTheme();
+  const { isLoading, loadingMessage } = useLoading();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -24,15 +27,20 @@ export default function Layout({ children }) {
   }, []);
 
   return (
-    <div className={`flex min-h-screen ${isDark ? 'bg-slate-900' : 'bg-gray-50'}`}>
-      {mounted && <Sidebar />}
+    <>
+      {/* Global Loading Screen */}
+      {isLoading && <LoadingScreen message={loadingMessage} />}
 
-      {/* Main Content */}
-      <main
-        className={`flex-1 p-8 ${isDark ? 'bg-slate-900' : 'bg-gray-50'}`}
-      >
-        {children}
-      </main>
-    </div>
+      <div className={`flex min-h-screen ${isDark ? 'bg-slate-900' : 'bg-gray-50'}`}>
+        {mounted && <Sidebar />}
+
+        {/* Main Content */}
+        <main
+          className={`flex-1 p-8 ${isDark ? 'bg-slate-900' : 'bg-gray-50'}`}
+        >
+          {children}
+        </main>
+      </div>
+    </>
   );
 }

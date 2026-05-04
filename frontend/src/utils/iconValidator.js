@@ -36,7 +36,7 @@ const AVAILABLE_MD_ICONS = [
   'MdUpload',
   'MdFileDownload',
   'MdBuild',
-  'MdTest',
+  'MdSpeed',
   'MdPlayArrow',
   'MdPause',
   'MdStop',
