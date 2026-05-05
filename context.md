@@ -21,30 +21,37 @@ LoadGate is a **smart, automated vehicle monitoring and access control solution*
 
 ## ⚙️ Hardware Components
 
-- **Arduino** → Central controller
-- **Load Cells (4 × 50kg)** → Measure vehicle weight
-- **IR Sensor** → Detect vehicle presence
-- **IP Camera** → Capture images + live stream
-- **Servo Motor** → Controls barrier (open/close gate)
+- **Arduino (Uno/Mega)** → Central controller with HX711 amplifier
+- **Load Cells (4 × 100kg)** → Measure vehicle weight (wired in pairs: L1+L3, L2+L4)
+- **HX711 Amplifier** → Serial communication to Arduino for load cell data
+- **IR Sensor** → Vehicle presence detection with interrupt handling
+- **Servo Motor** → Barrier control (0° closed, 180° open)
+- **Buck Controller** → Power management for barrier
+- **Sonar Sensor** → Distance measurement (optional)
+- **IP Camera** → Vehicle image capture + live stream
+- **Serial Connection** → USB/COM port communication between Arduino and backend
 
 ---
 
 ## 🔄 System Workflow
 
-1. 🚘 Vehicle approaches the system
-2. 📡 IR sensor detects vehicle presence (triggers IR event service)
-3. ⚖️ Load cells measure total weight
-4. 📤 Arduino sends weight data to backend via serial/USB
-5. 🧠 Backend processes:
-   - Checks weight against limit
-   - If weight ≤ limit → allow
-   - If weight > limit → block
-6. 🚧 Servo motor responds:
-   - Opens barrier (allowed)
-   - Keeps barrier closed (blocked)
-7. 📸 Camera captures vehicle image
-8. 💾 Backend stores data + image locally
-9. 🖥️ Web app displays record in real-time
+1. **IR Detection**: Vehicle approaches → IR sensor detects presence (interrupt signal)
+2. **Weight Measurement**: Arduino reads 4 load cells via HX711 amplifier
+3. **Decision Logic**: Arduino calculates total weight and compares against limit
+4. **Barrier Control**: Arduino controls servo motor (open/allow or closed/block)
+5. **Data Transmission**: Arduino sends real-time data to backend via serial port
+   - Vehicle detection: `VEHICLE|weight|status|timestamp`
+   - Component status: `STATUS|weight|servo:ok|ir:ok|hx711:ok|buck:ok|sonar:ok|timestamp`
+6. **Backend Processing**: 
+   - Receives and parses Arduino data
+   - Stores in MongoDB with image reference
+   - Broadcasts to frontend via REST API
+7. **Frontend Display**:
+   - Settings page shows live load cell readings (all 4 cells)
+   - Component health status (servo, IR, HX711, buck, sonar, webcam)
+   - Real-time weight and decision status
+8. **Image Capture**: IP camera captures vehicle image
+9. **Database Storage**: Records stored with timestamp, weight, status, image path
 
 ---
 
@@ -63,10 +70,11 @@ LoadGate is a **smart, automated vehicle monitoring and access control solution*
 - **Mongoose** - ODM
 
 ### Real-Time & Communication
+- **Serial Communication** - Arduino ↔ Backend via USB/COM port
 - **EventEmitter Service** - IR event listening (NOT Socket.IO)
-- **REST API** - Primary communication
+- **REST API** - Primary frontend-backend communication
+- **Server-Sent Events (SSE)** - Live data streaming for Arduino updates
 - **WebSocket (optional)** - For live dashboard updates
-- **Server-Sent Events (SSE)** - Alternative for real-time
 
 ### Media & Processing
 - **FFmpeg** - Video streaming & capture
@@ -395,6 +403,19 @@ Instead of Socket.IO, LoadGate uses an **EventEmitter-based service** for IR eve
 - `GET /api/events/stream` - Server-Sent Events stream
 - `GET /api/events/latest` - Get latest IR event
 
+**Arduino - Load Cell Data**
+- `GET /api/arduino/load-cells` - Current load cell readings (all 4 cells + total weight)
+- `GET /api/arduino/components` - Component health status (servo, IR, HX711, buck, sonar, webcam)
+- `GET /api/arduino/status` - Arduino connection status (hardware/simulation mode)
+- `GET /api/arduino/latest` - Latest vehicle detection data
+- `GET /api/arduino/stream` - Real-time data streaming (Server-Sent Events)
+
+**Arduino - Commands**
+- `POST /api/arduino/command` - Send raw command to Arduino (TARE, OPEN, CLOSE, INFO)
+- `POST /api/arduino/tare` - Calibrate scale to zero
+- `POST /api/arduino/barrier/open` - Open barrier via servo
+- `POST /api/arduino/barrier/close` - Close barrier via servo
+
 **Camera**
 - `GET /api/camera/stream` - Live camera feed
 - `GET /api/camera/snapshot` - Latest snapshot
@@ -510,10 +531,13 @@ npm run dev
 - ✅ Path aliases (@/*)
 
 **Arduino**
-- ✅ HX711 load cell integration (4 × 50kg)
-- ✅ IR sensor interrupt handling
-- ✅ Servo motor barrier control
-- ✅ Serial communication protocol
+- ✅ HX711 load cell integration (4 × 100kg, wired in pairs: L1+L3, L2+L4)
+- ✅ IR sensor interrupt handling with debouncing
+- ✅ Servo motor barrier control (PWM control, 0-180°)
+- ✅ Serial communication protocol (9600 baud)
+- ✅ Periodic component status reporting (every 2 seconds)
+- ✅ Component health checking (servo, IR, HX711, buck, sonar)
+- ✅ Debug command interface (TARE, WEIGHT, OPEN, CLOSE, INFO)
 
 **Project Setup**
 - ✅ run.ps1 PowerShell startup script (single terminal execution)
@@ -644,7 +668,51 @@ npm run dev
 - ✅ Shows sample records
 - ✅ Added npm script: `npm run seed`
 
-### Phase 4 - Coming Soon
+### Phase 4 - Arduino Integration (✅ COMPLETED)
+
+**Backend - Arduino Service**
+- ✅ Serial communication with Arduino (hardware + simulation modes)
+- ✅ Load cell data parsing and storage
+- ✅ Component status tracking (servo, IR, HX711, buck, sonar, webcam)
+- ✅ Vehicle detection event handling
+- ✅ Periodic status report parsing (every 2 seconds)
+- ✅ Connection state management with auto-retry logic
+- ✅ EventEmitter for real-time data updates
+- ✅ 8 REST API endpoints for Arduino data and commands
+- ✅ Server-Sent Events streaming for live updates
+
+**Backend - Arduino Controller**
+- ✅ GET /api/arduino/load-cells - Live readings (4 cells + total)
+- ✅ GET /api/arduino/components - Component health status
+- ✅ GET /api/arduino/status - Connection status (hardware/simulation)
+- ✅ GET /api/arduino/latest - Latest vehicle data
+- ✅ GET /api/arduino/stream - Real-time SSE stream
+- ✅ POST /api/arduino/command - Send raw commands
+- ✅ POST /api/arduino/tare - Scale calibration
+- ✅ POST /api/arduino/barrier/* - Barrier control
+
+**Arduino Firmware Updates**
+- ✅ Updated MAX_WEIGHT_LIMIT to 5000 kg (4 × 100kg cells)
+- ✅ Added component status struct for health monitoring
+- ✅ Implemented periodic STATUS messages (2-second intervals)
+- ✅ Added checkComponentStatus() function
+- ✅ Implemented sendPeriodicStatus() for component health
+- ✅ Added serialEvent() for command handling
+- ✅ Component status parsing: servo, IR, HX711, buck, sonar
+
+**Frontend - Settings Page**
+- ✅ Live Load Cell Data section with real-time weight display
+- ✅ Individual load cell readings (L1, L2, L3, L4) with connection status
+- ✅ Hardware Components Status grid (7 components)
+- ✅ Arduino connection mode display (hardware/simulation)
+- ✅ Material Design icons for all components (no emojis)
+- ✅ Color-coded status indicators (connected/warning/disconnected)
+- ✅ Auto-refresh every 5 seconds for live updates
+- ✅ Component icons: MdLinearScale, MdSettingsInputComponent, MdOutlinedFlag, MdSensors, MdElectricBolt, MdReplay, MdVideocam
+- ✅ Disconnection logic: All components show disconnected if Arduino offline
+- ✅ Timestamps for each data point
+
+### Phase 5 - Coming Soon
 
 **Backend Features (Remaining)**
 - 🚧 JWT authentication (bcryptjs, jsonwebtoken ready)
@@ -654,11 +722,10 @@ npm run dev
 - 🚧 Analytics aggregation pipelines
 
 **Frontend Features (Remaining)**
-- ✅ Chart.js integration for analytics (COMPLETED)
-- 🚧 Real-time updates via SSE or WebSocket
-- 🚧 Admin login system
-- 🚧 Settings page configuration UI
-- 🚧 System health monitoring dashboard
+- 🚧 Real-time updates via WebSocket (SSE currently in place)
+- 🚧 Advanced settings configuration
+- 🚧 Vehicle type detection with AI
+- 🚧 SMS/Email notifications
 
 ---
 
@@ -672,23 +739,24 @@ npm run dev
 
 ---
 
-**Last Updated:** January 2025 - Analytics Dashboard + Database Seeding Script for 50 Dummy Records
+**Last Updated:** May 2025 - Arduino Integration Complete (Live Load Cell Data, Component Health Monitoring, Settings Page Display)
 
 ---
 
-## 📝 Key Files Modified in Session
+## 📝 Key Files - Arduino Integration
 
-- `frontend/src/context/ThemeContext.jsx` - Theme management with localStorage
-- `frontend/src/components/Layout.jsx` - Sidebar layout with theme toggle
-- `frontend/src/components/LoadingScreen.jsx` - Animated fullscreen loader
-- `frontend/src/components/Icon.jsx` - Safe icon wrapper with error handling
-- `frontend/src/components/Dashboard.jsx` - Dashboard with theme and icons
-- `frontend/src/pages/vehicles.jsx` - Vehicle records with pagination, export dropdown, sort dropdown (custom interactive UI)
-- `frontend/src/pages/analytics.jsx` - Analytics dashboard with 6 chart types (Line, Bar, Pie, Doughnut, Radar, Hourly) with animations
-- `frontend/src/pages/settings.jsx` - Settings page with theme support
-- `frontend/src/pages/_app.jsx` - ThemeProvider wrapper
-- `frontend/src/styles/globals.css` - Complete dark/light CSS with brand color
-- `frontend/tailwind.config.js` - `darkMode: 'class'` configuration
-- `frontend/src/utils/api.js` - Export method added to vehicleAPI
-- `setup.js` - Updated FFmpeg check to warn-only
-- `context.md` - This file (updated with all UI/UX and analytics documentation)
+### Backend Files (New/Updated)
+- `backend/src/services/arduinoService.js` - **NEW** - Arduino serial communication + simulation mode
+- `backend/src/controllers/arduinoController.js` - **NEW** - 8 REST API endpoints
+- `backend/src/routes/arduinoRoutes.js` - **UPDATED** - Arduino API route definitions
+- `backend/src/index.js` - **UPDATED** - Arduino service initialization
+
+### Frontend Files (Updated)
+- `frontend/src/pages/settings.jsx` - **UPDATED** - Live load cell data display, component status grid, Arduino connection status
+- Previous files: ThemeContext, Layout, LoadingScreen, Icon, Dashboard, vehicles, analytics, etc.
+
+### Arduino Firmware (Updated)
+- `arduino/loadgate.ino` - **UPDATED** - Component status tracking, periodic STATUS messages, command handling
+
+### Documentation
+- `context.md` - This file (updated with Arduino integration and Phase 4 completion)

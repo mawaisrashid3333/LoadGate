@@ -1,67 +1,44 @@
 /**
  * Arduino Routes
- * API endpoints for Arduino communication
+ * API endpoints for Arduino communication and sensor data
  */
 
 const express = require('express');
-const irEventService = require('../services/irEventService');
+const arduinoController = require('../controllers/arduinoController');
 
 const router = express.Router();
 
-// Get Arduino status
-router.get('/status', (req, res) => {
-  const status = irEventService.getStatus();
-  res.json(status);
-});
+// ==================== Load Cell Data ====================
+// Get current load cell readings (all 4 cells + total weight)
+router.get('/load-cells', arduinoController.getLoadCells);
 
-// Send command to Arduino
-router.post('/command', (req, res) => {
-  const { command } = req.body;
+// ==================== Component Health ====================
+// Get component status (servo, IR, buck controller, sonar, webcam, etc.)
+router.get('/components', arduinoController.getComponents);
 
-  if (!command) {
-    return res.status(400).json({
-      error: 'Command is required',
-    });
-  }
+// ==================== Arduino Status ====================
+// Get Arduino connection status and mode (hardware/simulation)
+router.get('/status', arduinoController.getStatus);
 
-  const success = irEventService.sendCommand(command);
+// Get latest vehicle detection data
+router.get('/latest', arduinoController.getLatestData);
 
-  res.json({
-    success,
-    command,
-    message: success ? 'Command sent' : 'Failed to send command',
-  });
-});
+// ==================== Commands ====================
+// Send raw command to Arduino
+router.post('/command', arduinoController.sendCommand);
 
-// Get latest IR event
-router.get('/events/latest', (req, res) => {
-  // This would be improved with actual event storage
-  res.json({
-    message: 'Subscribe to /events/stream for real-time events',
-  });
-});
+// Tare (calibrate zero) the scale
+router.post('/tare', arduinoController.tare);
 
-// Server-Sent Events stream for real-time updates
-router.get('/events/stream', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
+// ==================== Barrier Control ====================
+// Open barrier
+router.post('/barrier/open', arduinoController.openBarrier);
 
-  // Send initial connection message
-  res.write('data: {"status":"connected"}\n\n');
+// Close barrier
+router.post('/barrier/close', arduinoController.closeBarrier);
 
-  // Subscribe to vehicle detected events
-  const onVehicleDetected = (event) => {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
-  };
-
-  irEventService.onVehicleDetected(onVehicleDetected);
-
-  // Handle client disconnect
-  req.on('close', () => {
-    irEventService.removeListener('vehicle_detected', onVehicleDetected);
-    res.end();
-  });
-});
+// ==================== Real-Time Streaming ====================
+// Server-Sent Events stream for live data updates
+router.get('/stream', arduinoController.streamData);
 
 module.exports = router;

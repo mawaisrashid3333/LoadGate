@@ -26,10 +26,19 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [operationStatus, setOperationStatus] = useState('');
   const [showConfirmDialog, setShowConfirmDialog] = useState(null);
+  
+  // Arduino state
+  const [arduinoData, setArduinoData] = useState(null);
+  const [arduinoComponents, setArduinoComponents] = useState(null);
+  const [arduinoStatus, setArduinoStatus] = useState(null);
 
   useEffect(() => {
     fetchSystemHealth();
-    const interval = setInterval(fetchSystemHealth, 10000); // Refresh every 10 seconds
+    fetchArduinoData();
+    const interval = setInterval(() => {
+      fetchSystemHealth();
+      fetchArduinoData();
+    }, 5000); // Refresh every 5 seconds for live updates
     return () => clearInterval(interval);
   }, []);
 
@@ -50,6 +59,33 @@ export default function SettingsPage() {
       setSystemInfo(info.data);
     } catch (error) {
       console.error('Error fetching system health:', error);
+    }
+  };
+
+  const fetchArduinoData = async () => {
+    try {
+      const [loadCellsRes, componentsRes, statusRes] = await Promise.all([
+        fetch('http://localhost:5000/api/arduino/load-cells'),
+        fetch('http://localhost:5000/api/arduino/components'),
+        fetch('http://localhost:5000/api/arduino/status'),
+      ]);
+
+      if (loadCellsRes.ok) {
+        const loadCellsData = await loadCellsRes.json();
+        setArduinoData(loadCellsData.data);
+      }
+
+      if (componentsRes.ok) {
+        const componentsData = await componentsRes.json();
+        setArduinoComponents(componentsData.data);
+      }
+
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        setArduinoStatus(statusData.data);
+      }
+    } catch (error) {
+      console.error('Error fetching Arduino data:', error);
     }
   };
 
@@ -101,15 +137,21 @@ export default function SettingsPage() {
   };
 
   const getHealthColor = (status) => {
-    if (status === 'healthy') return 'text-green-500';
+    if (status === 'healthy' || status === 'connected') return 'text-green-500';
     if (status === 'warning') return 'text-yellow-500';
-    return 'text-red-500';
+    if (status === 'disconnected') return 'text-red-500';
+    return 'text-gray-500';
   };
 
   const getHealthBgColor = (status) => {
-    if (status === 'healthy') return isDark ? 'bg-green-900/30' : 'bg-green-50';
+    if (status === 'healthy' || status === 'connected') return isDark ? 'bg-green-900/30' : 'bg-green-50';
     if (status === 'warning') return isDark ? 'bg-yellow-900/30' : 'bg-yellow-50';
-    return isDark ? 'bg-red-900/30' : 'bg-red-50';
+    if (status === 'disconnected') return isDark ? 'bg-red-900/30' : 'bg-red-50';
+    return isDark ? 'bg-gray-900/30' : 'bg-gray-50';
+  };
+
+  const getStatusLabel = (status) => {
+    return status === 'disconnected' ? 'DISCONNECTED' : status.toUpperCase();
   };
 
   return (
@@ -119,7 +161,10 @@ export default function SettingsPage() {
           System Settings & Control
         </h1>
         <button
-          onClick={fetchSystemHealth}
+          onClick={() => {
+            fetchSystemHealth();
+            fetchArduinoData();
+          }}
           disabled={loading}
           className={`px-4 py-2 rounded font-medium transition flex items-center gap-2 ${
             isDark
@@ -146,6 +191,133 @@ export default function SettingsPage() {
           }`}
         >
           {operationStatus}
+        </div>
+      )}
+
+      {/* Arduino Live Load Cell Data */}
+      {arduinoData && (
+        <div className={`rounded-lg border ${isDark ? 'border-gray-700 bg-slate-800' : 'border-gray-200 bg-white'} p-6 shadow-lg`}>
+          <h2 className={`text-2xl font-bold mb-4 flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            <Icon name="MdScale" className="h-6 w-6" />
+            Live Load Cell Data
+          </h2>
+          
+          {/* Total Weight Display */}
+          <div className={`mb-4 p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-blue-50'} border-2 border-blue-500`}>
+            <div className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Total Weight</div>
+            <div className="text-4xl font-bold text-blue-500 mt-1">
+              {Math.round(arduinoData.totalWeight)} <span className="text-lg">kg</span>
+            </div>
+            <div className={`text-xs mt-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+              Status: <span className={`font-bold ${arduinoData.status === 'ALLOWED' ? 'text-green-500' : 'text-red-500'}`}>
+                {arduinoData.status}
+              </span>
+            </div>
+            <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+              Last Update: {arduinoData.timestamp ? new Date(arduinoData.timestamp).toLocaleTimeString() : 'N/A'}
+            </div>
+          </div>
+
+          {/* Individual Load Cells */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {Object.entries(arduinoData.cells || {}).map(([cellName, cellData]) => (
+              <div key={cellName} className={`p-4 rounded-lg border ${getHealthBgColor(cellData.status)} border-current`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Load Cell {cellName}
+                  </span>
+                  <Icon name={cellData.status === 'connected' ? 'MdCheckCircle' : 'MdCancel'} 
+                    className={`h-5 w-5 ${getHealthColor(cellData.status)}`} />
+                </div>
+                <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  {Math.round(cellData.value)} kg
+                </div>
+                <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {cellData.lastUpdate ? new Date(cellData.lastUpdate).toLocaleTimeString() : 'Waiting...'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Arduino Components Status */}
+      {arduinoComponents && (
+        <div className={`rounded-lg border ${isDark ? 'border-gray-700 bg-slate-800' : 'border-gray-200 bg-white'} p-6 shadow-lg`}>
+          <h2 className={`text-2xl font-bold mb-4 flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            <Icon name="MdDevicesOther" className="h-6 w-6" />
+            Hardware Components Status
+          </h2>
+
+          {/* Arduino Connection Status */}
+          {arduinoStatus && (
+            <div className={`mb-4 p-4 rounded-lg border ${getHealthBgColor(arduinoStatus.isConnected ? 'connected' : 'disconnected')} border-current`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className={`font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Arduino Connection</span>
+                  <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Mode: {arduinoStatus.mode === 'hardware' ? 'Hardware' : 'Simulation'}
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <Icon name={arduinoStatus.isConnected ? 'MdCheckCircle' : 'MdCancel'} 
+                    className={`h-6 w-6 ${getHealthColor(arduinoStatus.isConnected ? 'connected' : 'disconnected')}`} />
+                  <span className={`text-sm font-bold ${getHealthColor(arduinoStatus.isConnected ? 'connected' : 'disconnected')}`}>
+                    {getStatusLabel(arduinoStatus.isConnected ? 'connected' : 'disconnected')}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {Object.entries(arduinoComponents).map(([component, data]) => {
+              // If Arduino is disconnected, all components should be disconnected too
+              const displayStatus = !arduinoStatus?.isConnected && component !== 'loadCells' && component !== 'hx711' 
+                ? 'disconnected' 
+                : data.status;
+              
+              const getComponentIcon = (comp) => {
+                switch(comp) {
+                  case 'loadCells': return 'MdLinearScale';
+                  case 'hx711': return 'MdSettingsInputComponent';
+                  case 'servo': return 'MdOutlinedFlag';
+                  case 'irSensor': return 'MdSensors';
+                  case 'buckController': return 'MdElectricBolt';
+                  case 'sonar': return 'MdReplay';
+                  case 'ipWebcam': return 'MdVideocam';
+                  default: return 'MdDevicesOther';
+                }
+              };
+              
+              return (
+              <div key={component} className={`p-4 rounded-lg border ${getHealthBgColor(displayStatus)} border-current flex items-center justify-between`}>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Icon name={getComponentIcon(component)} className="h-4 w-4" />
+                    <span className={`block font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                      {component === 'loadCells' && 'Load Cells'}
+                      {component === 'hx711' && 'HX711 Amplifier'}
+                      {component === 'servo' && 'Servo Motor'}
+                      {component === 'irSensor' && 'IR Sensor'}
+                      {component === 'buckController' && 'Buck Controller'}
+                      {component === 'sonar' && 'Sonar Sensor'}
+                      {component === 'ipWebcam' && 'IP Webcam'}
+                    </span>
+                  </div>
+                  <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                    {data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : 'No data'}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Icon name={displayStatus === 'connected' ? 'MdCheckCircle' : displayStatus === 'warning' ? 'MdWarningAmber' : 'MdCancel'} 
+                    className={`h-5 w-5 ${getHealthColor(displayStatus)}`} />
+                  <span className={`font-medium text-sm ${getHealthColor(displayStatus)}`}>{getStatusLabel(displayStatus)}</span>
+                </div>
+              </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -233,7 +405,7 @@ export default function SettingsPage() {
                 <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>{component}</span>
                 <div className="flex items-center gap-2">
                   <Icon name="MdCheckCircle" className={`h-5 w-5 ${getHealthColor(status)}`} />
-                  <span className={`font-medium ${getHealthColor(status)}`}>{status.toUpperCase()}</span>
+                  <span className={`font-medium ${getHealthColor(status)}`}>{getStatusLabel(status)}</span>
                 </div>
               </div>
             ))}

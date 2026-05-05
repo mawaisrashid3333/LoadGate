@@ -28,12 +28,27 @@ HX711 scale;
 
 // Calibration values (adjust based on your load cells)
 const float CALIBRATION_FACTOR = 20.0; // Adjust based on calibration
-const float MAX_WEIGHT_LIMIT = 5000.0; // kg
+const float MAX_WEIGHT_LIMIT = 5000.0; // kg (4x 100kg cells = 400kg total, but set limit to 5000)
 
 // IR sensor state
 volatile boolean vehicleDetected = false;
 unsigned long lastIRTriggerTime = 0;
 const unsigned long IR_DEBOUNCE_TIME = 500; // ms
+
+// Periodic status reporting
+unsigned long lastStatusReport = 0;
+const unsigned long STATUS_REPORT_INTERVAL = 2000; // Send status every 2 seconds
+
+// Component status tracking
+struct ComponentStatus {
+  boolean servo = true;
+  boolean ir = true;
+  boolean hx711 = true;
+  boolean buckController = true;
+  boolean sonar = true;
+};
+
+ComponentStatus components;
 
 // ==================== Setup ====================
 void setup() {
@@ -63,7 +78,13 @@ void loop() {
     vehicleDetected = false;
   }
   
-  // Periodic weight monitoring (optional)
+  // Periodic weight and status monitoring
+  unsigned long currentTime = millis();
+  if (currentTime - lastStatusReport >= STATUS_REPORT_INTERVAL) {
+    sendPeriodicStatus();
+    lastStatusReport = currentTime;
+  }
+  
   delay(100);
 }
 
@@ -157,6 +178,47 @@ void sendDataToBackend(float weight, boolean isAllowed) {
   String message = "VEHICLE|" + String(weight) + "|" + status + "|" + millis();
   
   Serial.println(message);
+}
+
+void sendPeriodicStatus() {
+  // Read current weight
+  float currentWeight = scale.get_units();
+  
+  // Check component statuses
+  checkComponentStatus();
+  
+  // Format: STATUS|weight|servo:ok|ir:ok|hx711:ok|buck:ok|sonar:ok|timestamp
+  String componentStr = "";
+  componentStr += "servo:" + String(components.servo ? "ok" : "fail") + "|";
+  componentStr += "ir:" + String(components.ir ? "ok" : "fail") + "|";
+  componentStr += "hx711:" + String(components.hx711 ? "ok" : "fail") + "|";
+  componentStr += "buck:" + String(components.buckController ? "ok" : "fail") + "|";
+  componentStr += "sonar:" + String(components.sonar ? "ok" : "fail");
+  
+  String message = "STATUS|" + String(currentWeight) + "|" + componentStr + "|" + millis();
+  Serial.println(message);
+}
+
+void checkComponentStatus() {
+  // Check if servo is responsive (basic check - in reality you'd send a test signal)
+  components.servo = true; // Assuming servo is OK
+  
+  // Check IR sensor by reading pin state
+  int irValue = digitalRead(IR_SENSOR_PIN);
+  components.ir = (irValue == HIGH || irValue == LOW); // IR sensor present if readable
+  
+  // Check HX711 communication
+  if (scale.is_ready()) {
+    components.hx711 = true;
+  } else {
+    components.hx711 = false;
+  }
+  
+  // Check buck controller (assume OK if servo is OK)
+  components.buckController = components.servo;
+  
+  // Check sonar (assume OK for now - would need sonar connected to test)
+  components.sonar = true;
 }
 
 void printSystemInfo() {

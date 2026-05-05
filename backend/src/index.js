@@ -11,6 +11,7 @@ const mongoose = require('mongoose');
 
 // Services
 const irEventService = require('./services/irEventService');
+const { getInstance: getArduinoService } = require('./services/arduinoService');
 
 // Routes
 const vehicleRoutes = require('./routes/vehicleRoutes');
@@ -50,7 +51,7 @@ const connectDB = async () => {
 };
 
 // Initialize Arduino/IR Event Service
-const initializeIRService = async () => {
+const initializeServices = async () => {
   try {
     await irEventService.initialize(process.env.ARDUINO_PORT || 'COM3');
     console.log('✓ IR Event Service initialized');
@@ -63,6 +64,29 @@ const initializeIRService = async () => {
   } catch (error) {
     console.warn('⚠️  IR Event Service not available:', error.message);
     console.warn('   System will continue without Arduino connection');
+  }
+
+  // Initialize Arduino Service
+  try {
+    const arduinoService = getArduinoService();
+    
+    // Try to connect to Arduino on configured port or fallback to simulation
+    const arduinoPort = process.env.ARDUINO_PORT || '/dev/ttyUSB0';
+    arduinoService.initializeSerial(arduinoPort);
+    
+    console.log('✓ Arduino Service initialized');
+    
+    // Listen for data updates
+    arduinoService.on('data-updated', (data) => {
+      console.log('📊 Load cell data updated:', data.vehicleData.totalWeight, 'kg');
+    });
+
+    arduinoService.on('vehicle-detected', (data) => {
+      console.log('🚗 Vehicle weight:', data.totalWeight, 'kg -', data.status);
+    });
+  } catch (error) {
+    console.warn('⚠️  Arduino Service error:', error.message);
+    console.warn('   System will continue with simulation mode');
   }
 };
 
@@ -105,13 +129,13 @@ const PORT = process.env.PORT || 5000;
 const startServer = async () => {
   try {
     await connectDB();
-    await initializeIRService();
+    await initializeServices();
     
     app.listen(PORT, () => {
       console.log(`\n🚀 LoadGate Backend Server`);
       console.log(`📍 Running on http://localhost:${PORT}`);
       console.log(`🌐 CORS enabled for ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
-      console.log(`📡 IR Event Service ready\n`);
+      console.log(`📡 Arduino & IR Services ready\n`);
     });
   } catch (error) {
     console.error('Failed to start server:', error.message);
