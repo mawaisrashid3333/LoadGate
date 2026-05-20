@@ -27,6 +27,7 @@ export const vehicleAPI = {
 // Arduino API
 export const arduinoAPI = {
   getStatus: () => apiClient.get('/arduino/status'),
+  getLoadCells: () => apiClient.get('/arduino/load-cells'),
   sendCommand: (command) => apiClient.post('/arduino/command', { command }),
   getEvents: () => apiClient.get('/arduino/events/stream'),
 };

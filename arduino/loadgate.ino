@@ -1,258 +1,315 @@
-/**
- * LoadGate Arduino Firmware
- * Smart Vehicle Weighing & Access Control System
- * 
- * Hardware:
- * - Arduino (Uno/Mega)
- * - 4x 50kg Load Cells with HX711 Amplifier
- * - IR Sensor for vehicle detection
- * - Servo Motor for barrier control
- * - IP Camera (separate network connection)
- */
+#include <Servo.h>
+#include "HX711.h"
 
-#include <HX711.h>
+// ================= PIN DEFINITIONS =================
+const int TRIG = 9;
+const int ECHO = 10;
+const int SERVO_PIN = 11;
+const int LOAD_CELL_DT = 13;
+const int LOAD_CELL_SCK = 12;
 
-// ==================== Pin Configuration ====================
-// Load Cell Sensor (HX711)
-const int LOADCELL_DOUT_PIN = 4;
-const int LOADCELL_SCK_PIN = 5;
+// ================= SERVO =================
+Servo servoGate;
+const int SERVO_CLOSED = 0;    // Gate closed position
+const int SERVO_OPEN = 90;     // Gate open position
 
-// IR Sensor
-const int IR_SENSOR_PIN = 2;
-
-// Servo Motor
-const int SERVO_PIN = 9;
-
-// ==================== Global Variables ====================
+// ================= LOAD CELL =================
 HX711 scale;
+const float CALIBRATION_FACTOR = 4.58;  // Calibrated value from HX711 calibration code
 
-// Calibration values (adjust based on your load cells)
-const float CALIBRATION_FACTOR = 20.0; // Adjust based on calibration
-const float MAX_WEIGHT_LIMIT = 5000.0; // kg (4x 100kg cells = 400kg total, but set limit to 5000)
+// state tracking
+bool objectPresent = false;
+bool detectionProcessing = false;  // Prevent multiple detections
+unsigned long lastSeenTime = 0;
+unsigned long gateOpenedTime = 0;  // Track when gate was opened
+float lastReadWeight = 0;
+float lastSonarDistance = -1;  // Track last sonar distance for deduplication
+const float DISTANCE_CHANGE_THRESHOLD = 10.0;  // cm - minimum change to trigger new detection
 
-// IR sensor state
-volatile boolean vehicleDetected = false;
-unsigned long lastIRTriggerTime = 0;
-const unsigned long IR_DEBOUNCE_TIME = 500; // ms
+// tuning
+const unsigned long RESET_TIME = 1500;     // object considered gone after 1.5s
+const unsigned long GATE_AUTO_CLOSE = 40000;  // Auto-close gate after 40 seconds
+const int SAMPLE_DELAY = 100;  // Reduced from 200ms for faster response
 
-// Periodic status reporting
-unsigned long lastStatusReport = 0;
-const unsigned long STATUS_REPORT_INTERVAL = 2000; // Send status every 2 seconds
-
-// Component status tracking
-struct ComponentStatus {
-  boolean servo = true;
-  boolean ir = true;
-  boolean hx711 = true;
-  boolean buckController = true;
-  boolean sonar = true;
-};
-
-ComponentStatus components;
-
-// ==================== Setup ====================
 void setup() {
   Serial.begin(9600);
-  
-  // Initialize Load Cell
-  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
-  scale.set_scale(CALIBRATION_FACTOR);
-  scale.tare(); // Reset scale to 0
-  
-  // Initialize IR Sensor
-  pinMode(IR_SENSOR_PIN, INPUT);
-  attachInterrupt(digitalPinToInterrupt(IR_SENSOR_PIN), onVehicleDetected, FALLING);
-  
-  // Initialize Servo
-  pinMode(SERVO_PIN, OUTPUT);
-  
-  delay(1000);
-  Serial.println("LoadGate Arduino Initialized");
-  printSystemInfo();
-}
 
-// ==================== Main Loop ====================
-void loop() {
-  if (vehicleDetected) {
-    handleVehicleDetection();
-    vehicleDetected = false;
-  }
-  
-  // Periodic weight and status monitoring
-  unsigned long currentTime = millis();
-  if (currentTime - lastStatusReport >= STATUS_REPORT_INTERVAL) {
-    sendPeriodicStatus();
-    lastStatusReport = currentTime;
-  }
-  
-  delay(100);
-}
+  // Sonar setup
+  pinMode(TRIG, OUTPUT);
+  pinMode(ECHO, INPUT);
 
-// ==================== IR Sensor Interrupt Handler ====================
-void onVehicleDetected() {
-  unsigned long currentTime = millis();
-  
-  // Debouncing
-  if (currentTime - lastIRTriggerTime < IR_DEBOUNCE_TIME) {
-    return;
-  }
-  
-  lastIRTriggerTime = currentTime;
-  vehicleDetected = true;
-}
-
-// ==================== Vehicle Detection Handler ====================
-void handleVehicleDetection() {
-  // Wait for vehicle to stabilize on the scale
+  // Servo setup
+  servoGate.attach(SERVO_PIN);
+  servoGate.write(SERVO_CLOSED);  // Start with gate closed
   delay(500);
-  
-  // Read weight
-  float weight = readWeight();
-  
-  // Determine if vehicle is allowed
-  boolean isAllowed = weight <= MAX_WEIGHT_LIMIT;
-  
-  // Send data to backend
-  sendDataToBackend(weight, isAllowed);
-  
-  // Control barrier
-  if (isAllowed) {
-    openBarrier();
-    Serial.println("BARRIER: OPEN");
-  } else {
-    closeBarrier();
-    Serial.println("BARRIER: CLOSED");
-  }
-  
-  // Wait before allowing next detection
-  delay(3000);
+
+  // Load cell setup
+  scale.begin(LOAD_CELL_DT, LOAD_CELL_SCK);
+  delay(500);  // Wait for HX711 to stabilize
+  scale.set_scale(CALIBRATION_FACTOR);
+  scale.tare();  // Reset scale to zero
+  delay(500);  // Wait after tare
+
+  Serial.println("=== LOADGATE SYSTEM INITIALIZED ===");
+  Serial.println("✓ Sonar on pins TRIG=9, ECHO=10");
+  Serial.println("✓ Servo on pin 11");
+  Serial.println("✓ Load Cell on pins DT=13, SCK=12");
+  Serial.println("✓ Calibration Factor: " + String(CALIBRATION_FACTOR, 2));
+  Serial.println("✓ Gate auto-close after: " + String(GATE_AUTO_CLOSE / 1000) + " seconds");
+  Serial.println("=====================================");
 }
 
-// ==================== Weight Reading ====================
+// ================= LOOP =================
+void loop() {
+
+  float distance = readSonar();
+  String type = classify(distance);
+
+  // always show live data
+  Serial.print("DISTANCE: ");
+  Serial.println(distance);
+
+  Serial.print("TYPE: ");
+  Serial.println(type);
+
+  // Log live weight continuously for debugging
+  float liveWeight = readWeightNonBlocking();
+  Serial.print("LIVE_WEIGHT: ");
+  Serial.print(liveWeight, 2);
+  Serial.println(" kg");
+
+  unsigned long now = millis();
+
+  // Check for backend commands (allow/block decision)
+  checkSerialCommands();
+
+  // Auto-close gate after 40 seconds
+  if (gateOpenedTime > 0 && (now - gateOpenedTime > GATE_AUTO_CLOSE)) {
+    Serial.println(">>> AUTO-CLOSE: 40 seconds elapsed, closing gate");
+    moveServo(SERVO_CLOSED);
+    gateOpenedTime = 0;
+    detectionProcessing = false;
+    objectPresent = false;
+  }
+
+  // Only detect new objects if not already processing one
+  if (!detectionProcessing && type != "CLEAR" && type != "UNKNOWN") {
+
+    // NEW ENTRY (object not present before OR timeout passed)
+    if (!objectPresent || (now - lastSeenTime > RESET_TIME)) {
+
+      // Check if distance changed significantly from last detection (deduplication)
+      bool distanceChanged = (lastSonarDistance < 0) || (abs(distance - lastSonarDistance) > DISTANCE_CHANGE_THRESHOLD);
+      
+      if (distanceChanged) {
+        objectPresent = true;
+        detectionProcessing = true;  // Lock out new detections
+        lastSeenTime = now;
+        lastSonarDistance = distance;  // Update tracked distance
+
+        // Read weight at detection time (multiple samples for accuracy)
+        float detectionWeight = readWeight();
+        lastReadWeight = detectionWeight;
+
+        Serial.print("NEW OBJECT DETECTED: ");
+        Serial.println(type);
+        Serial.print("DISTANCE: ");
+        Serial.print(distance, 1);
+        Serial.println(" cm");
+        Serial.print("WEIGHT_AT_DETECTION: ");
+        Serial.print(detectionWeight, 2);
+        Serial.println(" kg");
+
+        // Send detection with distance to backend
+        String eventString = String(distance, 1) + "|" + String(detectionWeight, 2);
+        Serial.print("[DEBUG] Formatted EVENT string: EVENT:");
+        Serial.println(eventString);
+        Serial.println("EVENT:" + eventString);
+      } else {
+        Serial.print("[DEDUPE] Distance unchanged (last: ");
+        Serial.print(lastSonarDistance, 1);
+        Serial.print(" current: ");
+        Serial.print(distance, 1);
+        Serial.println(" cm) - skipping frame pass");
+      }
+    } 
+    else {
+      // update time so object stays "alive"
+      lastSeenTime = now;
+    }
+  }
+
+  // ---------------- RESET CONDITION ----------------
+  if (type == "CLEAR") {
+
+    if (objectPresent && (now - lastSeenTime > RESET_TIME)) {
+      objectPresent = false;
+      lastSonarDistance = -1;  // Reset distance tracking
+      Serial.println("OBJECT LEFT");
+      
+      // Only close gate if it wasn't auto-opened by backend
+      // (Let backend control gate closure, or auto-close after 40 seconds)
+      if (gateOpenedTime == 0) {
+        // Gate was not opened by ALLOW command, close it
+        moveServo(SERVO_CLOSED);
+      }
+      // If gate was opened (gateOpenedTime > 0), let auto-close timer handle it
+    }
+  }
+
+  delay(SAMPLE_DELAY);
+}
+
+// ================= SONAR =================
+float readSonar() {
+
+  digitalWrite(TRIG, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG, LOW);
+
+  long duration = pulseIn(ECHO, HIGH, 30000);
+
+  if (duration == 0) return -1;
+
+  float distance = (duration * 0.0343) / 2;
+
+  if (distance > 400) return -1;
+
+  return distance;
+}
+
+// ================= CLASSIFICATION =================
+String classify(float d) {
+
+  if (d <= 0) return "CLEAR";
+
+  // NEW THRESHOLDS:
+  // > 800 cm: No object (clear)
+  // < 200 cm: Object detected (pass to Gemini)
+  if (d > 800) return "CLEAR";  // More than 8 meters = no object
+
+  if (d >= 200 && d <= 800) return "OBJECT";  // 2-8 meters = object detected
+
+  if (d > 0 && d < 10) return "GROUND";  // Very close - sonar facing ground
+  
+  if (d >= 10 && d < 200) return "OBJECT";  // Less than 2 meters = object
+
+  return "UNKNOWN";
+}
+
+// ================= LOAD CELL =================
 float readWeight() {
-  // Average multiple readings for accuracy
+  if (!scale.is_ready()) {
+    Serial.println("[ERROR] Load cell not ready!");
+    return 0;
+  }
+
+  // Take average of 10 readings for high accuracy when detecting
   float totalWeight = 0;
-  const int READINGS = 5;
+  const int SAMPLES = 10;
   
-  for (int i = 0; i < READINGS; i++) {
-    totalWeight += scale.get_units();
-    delay(100);
+  Serial.println("[WEIGHT_DEBUG] Starting 10-sample average...");
+  
+  for (int i = 0; i < SAMPLES; i++) {
+    float reading = scale.get_units();
+    totalWeight += reading;
+    Serial.print("[WEIGHT_DEBUG] Sample ");
+    Serial.print(i + 1);
+    Serial.print("/10: ");
+    Serial.print(reading, 3);
+    Serial.println(" kg");
+    delay(30);
   }
   
-  float averageWeight = totalWeight / READINGS;
+  float avgWeight = totalWeight / SAMPLES;
   
-  Serial.print("Weight: ");
-  Serial.print(averageWeight);
+  Serial.print("[WEIGHT_DEBUG] Total: ");
+  Serial.print(totalWeight, 3);
+  Serial.print(" / Samples: ");
+  Serial.print(SAMPLES);
+  Serial.print(" = Average: ");
+  Serial.print(avgWeight, 3);
   Serial.println(" kg");
   
-  return averageWeight;
+  // Ensure weight is non-negative
+  if (avgWeight < 0) avgWeight = 0;
+  
+  return avgWeight;
 }
 
-// ==================== Barrier Control ====================
-void openBarrier() {
-  // Servo angle for open position (adjust as needed)
-  setServoAngle(180);
-}
-
-void closeBarrier() {
-  // Servo angle for closed position
-  setServoAngle(0);
-}
-
-void setServoAngle(int angle) {
-  // PWM pulse width: 1000-2000 microseconds (0-180 degrees)
-  int pulseWidth = map(angle, 0, 180, 1000, 2000);
-  
-  for (int i = 0; i < 15; i++) {
-    digitalWrite(SERVO_PIN, HIGH);
-    delayMicroseconds(pulseWidth);
-    digitalWrite(SERVO_PIN, LOW);
-    delayMicroseconds(20000 - pulseWidth);
-  }
-}
-
-// ==================== Data Communication ====================
-void sendDataToBackend(float weight, boolean isAllowed) {
-  // Format: VEHICLE|weight|status|timestamp
-  String status = isAllowed ? "ALLOWED" : "BLOCKED";
-  String message = "VEHICLE|" + String(weight) + "|" + status + "|" + millis();
-  
-  Serial.println(message);
-}
-
-void sendPeriodicStatus() {
-  // Read current weight
-  float currentWeight = scale.get_units();
-  
-  // Check component statuses
-  checkComponentStatus();
-  
-  // Format: STATUS|weight|servo:ok|ir:ok|hx711:ok|buck:ok|sonar:ok|timestamp
-  String componentStr = "";
-  componentStr += "servo:" + String(components.servo ? "ok" : "fail") + "|";
-  componentStr += "ir:" + String(components.ir ? "ok" : "fail") + "|";
-  componentStr += "hx711:" + String(components.hx711 ? "ok" : "fail") + "|";
-  componentStr += "buck:" + String(components.buckController ? "ok" : "fail") + "|";
-  componentStr += "sonar:" + String(components.sonar ? "ok" : "fail");
-  
-  String message = "STATUS|" + String(currentWeight) + "|" + componentStr + "|" + millis();
-  Serial.println(message);
-}
-
-void checkComponentStatus() {
-  // Check if servo is responsive (basic check - in reality you'd send a test signal)
-  components.servo = true; // Assuming servo is OK
-  
-  // Check IR sensor by reading pin state
-  int irValue = digitalRead(IR_SENSOR_PIN);
-  components.ir = (irValue == HIGH || irValue == LOW); // IR sensor present if readable
-  
-  // Check HX711 communication
-  if (scale.is_ready()) {
-    components.hx711 = true;
-  } else {
-    components.hx711 = false;
+// Non-blocking weight read for continuous logging
+float readWeightNonBlocking() {
+  if (!scale.is_ready()) {
+    return 0;
   }
   
-  // Check buck controller (assume OK if servo is OK)
-  components.buckController = components.servo;
+  // Single fast reading for logging
+  float weight = scale.get_units();
   
-  // Check sonar (assume OK for now - would need sonar connected to test)
-  components.sonar = true;
+  if (weight < 0) weight = 0;
+  
+  return weight;
 }
 
-void printSystemInfo() {
-  Serial.println("\n=== LoadGate System Info ===");
-  Serial.print("Max Weight Limit: ");
-  Serial.print(MAX_WEIGHT_LIMIT);
-  Serial.println(" kg");
-  Serial.print("Calibration Factor: ");
-  Serial.println(CALIBRATION_FACTOR);
-  Serial.print("IR Debounce Time: ");
-  Serial.print(IR_DEBOUNCE_TIME);
-  Serial.println(" ms");
-  Serial.println("System ready for operation\n");
+// ================= SERVO CONTROL =================
+void moveServo(int angle) {
+  if (angle < 0) angle = 0;
+  if (angle > 180) angle = 180;
+  
+  servoGate.write(angle);
+  delay(400);  // Reduced from 600ms to 400ms (servo movement is faster)
+  
+  Serial.print("SERVO_MOVED: ");
+  Serial.println(angle);
 }
 
-// ==================== Debug Commands ====================
-void serialEvent() {
-  while (Serial.available()) {
+// ================= SERIAL COMMAND HANDLER =================
+void checkSerialCommands() {
+  while (Serial.available() > 0) {
     String command = Serial.readStringUntil('\n');
     command.trim();
     
-    if (command == "TARE") {
-      scale.tare();
-      Serial.println("Scale tared");
-    } else if (command == "WEIGHT") {
-      Serial.println(readWeight());
-    } else if (command == "OPEN") {
-      openBarrier();
-      Serial.println("Barrier opened");
-    } else if (command == "CLOSE") {
-      closeBarrier();
-      Serial.println("Barrier closed");
-    } else if (command == "INFO") {
-      printSystemInfo();
+    Serial.print("[DEBUG] Received serial: ");
+    Serial.println(command);
+    
+    if (command.length() == 0) return;
+    
+    // Command format: CMD:ACTION or CMD:ACTION:VALUE
+    if (command.startsWith("CMD:")) {
+      String action = command.substring(4);
+      
+      Serial.print("[DEBUG] Parsed action: ");
+      Serial.println(action);
+      
+      if (action.equals("ALLOW")) {
+        // Backend says to allow - open gate
+        Serial.println(">>> BACKEND_ALLOW: Opening gate to 90 degrees");
+        moveServo(SERVO_OPEN);
+        gateOpenedTime = millis();  // Start 40-second timer
+        detectionProcessing = false;  // Allow new detections after this
+        Serial.println(">>> Servo move completed");
+      }
+      else if (action.equals("BLOCK")) {
+        // Backend says to block - close gate
+        Serial.println(">>> BACKEND_BLOCK: Keeping gate closed to 0 degrees");
+        moveServo(SERVO_CLOSED);
+        gateOpenedTime = 0;
+        detectionProcessing = false;  // Allow new detections after this
+        Serial.println(">>> Servo move completed");
+      }
+      else if (action.startsWith("SET_LIMIT:")) {
+        // Update weight limit
+        float newLimit = action.substring(10).toFloat();
+        Serial.print("Weight limit updated to: ");
+        Serial.println(newLimit);
+      }
+      else {
+        Serial.print("Unknown command: ");
+        Serial.println(action);
+      }
     }
   }
 }

@@ -18,6 +18,7 @@ export default function VehiclesPage() {
   const [totalRecords, setTotalRecords] = useState(0);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
   
   // Search and Filter States
   const [searchPlate, setSearchPlate] = useState('');
@@ -449,6 +450,12 @@ export default function VehiclesPage() {
                 <thead>
                   <tr className={`border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
                     <th className={`px-4 py-3 text-left ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Image
+                    </th>
+                    <th className={`px-4 py-3 text-left ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Category
+                    </th>
+                    <th className={`px-4 py-3 text-left ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                       Date & Time
                     </th>
                     <th className={`px-4 py-3 text-left ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
@@ -458,7 +465,7 @@ export default function VehiclesPage() {
                       Status
                     </th>
                     <th className={`px-4 py-3 text-left ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                      Number Plate
+                      License Plate
                     </th>
                   </tr>
                 </thead>
@@ -468,6 +475,49 @@ export default function VehiclesPage() {
                       key={vehicle._id}
                       className={`border-b ${isDark ? 'border-gray-700 hover:bg-gray-800' : 'border-gray-200 hover:bg-gray-50'}`}
                     >
+                      <td className="px-4 py-3">
+                        {vehicle.image ? (
+                          <img
+                            src={vehicle.image}
+                            alt="Vehicle"
+                            className="h-10 w-16 rounded object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={() => setSelectedImage(vehicle.image)}
+                            onError={(e) => {
+                              e.target.src = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Crect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/%3E%3Ctext x=%2250%22 y=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2214%22%3ENo Image%3C/text%3E%3C/svg%3E';
+                            }}
+                          />
+                        ) : (
+                          <div className={`h-10 w-16 rounded flex items-center justify-center ${isDark ? 'bg-slate-700' : 'bg-gray-200'}`}>
+                            <Icon name="MdImageNotSupported" className="h-5 w-5" />
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded px-3 py-1 text-sm font-medium ${
+                            vehicle.category === 'human'
+                              ? isDark
+                                ? 'bg-purple-900 text-purple-200'
+                                : 'bg-purple-100 text-purple-800'
+                              : vehicle.category === 'vehicle'
+                              ? isDark
+                                ? 'bg-blue-900 text-blue-200'
+                                : 'bg-blue-100 text-blue-800'
+                              : isDark
+                              ? 'bg-gray-700 text-gray-200'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}
+                        >
+                          {vehicle.category === 'human' ? (
+                            <Icon name="MdPerson" className="h-4 w-4" />
+                          ) : vehicle.category === 'vehicle' ? (
+                            <Icon name="MdDirectionsCar" className="h-4 w-4" />
+                          ) : (
+                            <Icon name="MdHelp" className="h-4 w-4" />
+                          )}
+                          {vehicle.category?.charAt(0).toUpperCase() + vehicle.category?.slice(1) || 'Unknown'}
+                        </span>
+                      </td>
                       <td className={`px-4 py-3 text-sm ${isDark ? 'text-gray-200' : 'text-slate-900'}`}>
                         {new Date(vehicle.timestamp).toLocaleString()}
                       </td>
@@ -495,9 +545,9 @@ export default function VehiclesPage() {
                         </span>
                       </td>
                       <td className={`px-4 py-3 font-mono ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                        {vehicle.carNumber ? (
+                        {vehicle.licensePlate ? (
                           <span className={`px-3 py-1 rounded ${isDark ? 'bg-slate-700' : 'bg-gray-100'}`}>
-                            {vehicle.carNumber}
+                            {vehicle.licensePlate}
                           </span>
                         ) : (
                           <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>-</span>
@@ -586,6 +636,47 @@ export default function VehiclesPage() {
           </>
         )}
       </div>
+
+      {/* Image Modal */}
+      {selectedImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          onClick={() => setSelectedImage(null)}
+        >
+          <div
+            className={`relative rounded-lg shadow-2xl max-w-4xl max-h-[90vh] ${
+              isDark ? 'bg-slate-900' : 'bg-white'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button
+              onClick={() => setSelectedImage(null)}
+              className={`absolute -top-4 -right-4 z-10 p-2 rounded-full shadow-lg transition-all ${
+                isDark
+                  ? 'bg-slate-700 hover:bg-slate-600 text-white'
+                  : 'bg-white hover:bg-gray-100 text-slate-900'
+              }`}
+              title="Close (ESC)"
+            >
+              <Icon name="MdClose" className="h-6 w-6" />
+            </button>
+
+            {/* Image Container */}
+            <div className="flex items-center justify-center p-4 max-h-[90vh]">
+              <img
+                src={selectedImage}
+                alt="Full size vehicle capture"
+                className="max-w-full max-h-[85vh] rounded object-contain"
+                onError={(e) => {
+                  e.target.src =
+                    'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 400 400%22%3E%3Crect fill=%22%23ddd%22 width=%22400%22 height=%22400%22/%3E%3Ctext x=%22200%22 y=%22200%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2248%22%3EImage Failed to Load%3C/text%3E%3C/svg%3E';
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

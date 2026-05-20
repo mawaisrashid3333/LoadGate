@@ -8,15 +8,17 @@
 import React, { useEffect, useState } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import Icon from './Icon';
-import { vehicleAPI, arduinoAPI } from '../utils/api';
+import { vehicleAPI, arduinoAPI, cameraAPI } from '../utils/api';
 
 export default function Dashboard() {
   const { isDark } = useTheme();
   const [vehicles, setVehicles] = useState([]);
   const [systemStatus, setSystemStatus] = useState(null);
   const [cameraOnline, setCameraOnline] = useState(false);
+  const [cameraStreamUrl, setCameraStreamUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [barrierStatus, setBarrierStatus] = useState('closed');
+  const [arduinoData, setArduinoData] = useState(null);
   const [vehicleLimits, setVehicleLimits] = useState({
     hourly: 50,
     daily: 500,
@@ -42,8 +44,20 @@ export default function Dashboard() {
         const statusRes = await arduinoAPI.getStatus();
         setSystemStatus(statusRes.data);
 
-        // Simulate camera check (would be real API call in production)
-        setCameraOnline(Math.random() > 0.3);
+        // Check camera status and stream URL
+        try {
+          const cameraStatusRes = await cameraAPI.getStatus();
+          setCameraOnline(cameraStatusRes.data.connected);
+
+          if (cameraStatusRes.data.connected) {
+            const streamRes = await cameraAPI.getStream();
+            setCameraStreamUrl(streamRes.data.streamUrl);
+          }
+        } catch (cameraError) {
+          console.error('Camera check failed:', cameraError);
+          setCameraOnline(false);
+          setCameraStreamUrl('');
+        }
 
         // Load saved vehicle limits from localStorage
         const savedLimits = localStorage.getItem('vehicleLimits');
@@ -53,13 +67,31 @@ export default function Dashboard() {
           setTempLimits(limits);
         }
 
-        // Generate sample alerts
-        setAlerts([
-          { id: 1, type: 'success', message: 'Vehicle allowed: Weight 1500kg', time: '5 min ago' },
-          { id: 2, type: 'warning', message: 'Heavy vehicle detected: 3200kg', time: '12 min ago' },
-          { id: 3, type: 'info', message: 'System calibrated successfully', time: '1 hour ago' },
-        ]);
-
+        // Generate dynamic alerts from recent vehicles
+        const dynamicAlerts = vehicleRes.data.data.slice(0, 3).map((vehicle, index) => {
+          const statusMessage = vehicle.status === 'ALLOWED' ? 'Vehicle allowed' : 'Vehicle blocked';
+          const weight = vehicle.weight ? `${Math.round(vehicle.weight)}kg` : 'N/A';
+          const time = vehicle.timestamp ? `${Math.floor((Date.now() - new Date(vehicle.timestamp)) / 60000)} min ago` : 'Recently';
+          const type = vehicle.status === 'ALLOWED' ? 'success' : 'warning';
+          return {
+            id: vehicle._id || index,
+            type,
+            message: `${statusMessage}: Weight ${weight}`,
+            time
+          };
+        });
+        
+        // Add system status alert
+        if (dynamicAlerts.length < 3) {
+          dynamicAlerts.push({
+            id: 'system-status',
+            type: statusRes.data?.connected ? 'success' : 'warning',
+            message: statusRes.data?.connected ? 'System online and operational' : 'System connection issue',
+            time: 'now'
+          });
+        }
+        
+        setAlerts(dynamicAlerts);
         setLoading(false);
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -76,6 +108,30 @@ export default function Dashboard() {
 
     return () => clearTimeout(timer);
   }, []);
+
+  // Polling for live Arduino data
+  useEffect(() => {
+    const fetchArduinoData = async () => {
+      try {
+        const res = await arduinoAPI.getLoadCells();
+        if (res.data?.data) {
+          setArduinoData(res.data.data);
+        }
+      } catch (error) {
+        console.error('Error fetching Arduino load cell data:', error);
+      }
+    };
+
+    // Fetch immediately and then every 2 seconds
+    fetchArduinoData();
+    const interval = setInterval(fetchArduinoData, 2000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  const isMjpegStream = (url) => /httpPreview|http.*Preview|Streaming\/channels\/\d+\/httpPreview|\/api\/camera\/stream\/live/i.test(url);
+  const isRtspStream = (url) => /^rtsp:\/\//i.test(url);
+  const isPreviewPage = (url) => /\/doc\/|#\/preview|\/doc\/index\.html/i.test(url);
 
   const handleBarrierControl = async (action) => {
     setControllingBarrier(true);
@@ -189,13 +245,12 @@ export default function Dashboard() {
               Live Camera Feed
             </h2>
             <div className={`relative ${isDark ? 'bg-slate-900' : 'bg-gray-100'} rounded-lg overflow-hidden`} style={{ aspectRatio: '16/9' }}>
-              {cameraOnline ? (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600">
-                  <div className="text-center">
-                    <Icon name="MdVideocam" className="h-16 w-16 text-white mx-auto mb-2" />
-                    <p className="text-white font-medium">Live Stream Active</p>
-                  </div>
-                </div>
+              {cameraOnline && cameraStreamUrl ? (
+                <img
+                  src="http://localhost:5000/api/camera/live"
+                  alt="Live Camera Feed"
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
+                />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <div className="text-center">
@@ -208,6 +263,19 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
+            {cameraStreamUrl && (
+              <div className="mt-3 flex justify-end gap-2">
+                <a
+                  href={cameraStreamUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg border border-blue-500 bg-blue-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600"
+                >
+                  <Icon name="MdOpenInNew" className="h-4 w-4" />
+                  Open Camera in New Tab
+                </a>
+              </div>
+            )}
           </div>
 
           {/* Barrier Control */}

@@ -39,6 +39,28 @@ class ArduinoService extends EventEmitter {
       allowed: null,
     };
 
+    // Last detected sonar distance to avoid duplicates
+    this.lastSonarDistance = null;
+    this.lastHumanDistance = null;
+    this.DISTANCE_CHANGE_THRESHOLD = 10.0; // cm - minimum change to trigger new detection
+    this.lastProcessedDistance = null;  // Track distance from last Gemini pass
+
+    // Current sonar reading (NEW FORMAT)
+    this.currentDistance = null;
+    this.currentType = null;
+    
+    // Stability tracking for 5-second window
+    this.stabilityTracking = {
+      distance: null,
+      type: null,
+      startTime: null,
+      timeout: null,
+      minDistance: null,
+      maxDistance: null,
+    };
+    this.STABILITY_WINDOW = 5000; // 5 seconds
+    this.STABILITY_THRESHOLD = 10; // ±10cm
+
     // Connection attempt counter
     this.connectionAttempts = 0;
     this.maxConnectionAttempts = 5;
@@ -62,7 +84,7 @@ class ArduinoService extends EventEmitter {
 
         this.serialPort = new SerialPort({
           path: portPath,
-          baudRate: 9600,
+          baudRate: parseInt(process.env.ARDUINO_BAUDRATE) || 9600,
           autoOpen: false,
         });
 
@@ -78,7 +100,10 @@ class ArduinoService extends EventEmitter {
         });
 
         parser.on('data', (data) => {
-          this.parseArduinoData(data.trim());
+          // Defer parsing to avoid blocking event loop for HTTP requests/streaming
+          setImmediate(() => {
+            this.parseArduinoData(data.trim());
+          });
         });
 
         this.serialPort.on('error', (err) => {
@@ -203,81 +228,220 @@ class ArduinoService extends EventEmitter {
    * Expected formats: 
    * - "VEHICLE|weight|status|timestamp"
    * - "STATUS|weight|servo:ok|ir:ok|hx711:ok|buck:ok|sonar:ok|timestamp"
+   * - "HUMAN|distance|confidence|timestamp"
+   * - "SONAR_VEHICLE|distance|confidence|timestamp"
+   * - "WEIGHT:weight"
+   * - "BARRIER: status"
    */
   parseArduinoData(data) {
     try {
-      if (data.includes('VEHICLE|')) {
-        const parts = data.split('|');
-        if (parts.length >= 3) {
-          const weight = parseFloat(parts[1]);
-          const status = parts[2].toUpperCase();
+      const trimmed = data.trim();
 
-          this.latestVehicleData.totalWeight = weight;
-          this.latestVehicleData.status = status;
-          this.latestVehicleData.allowed = status === 'ALLOWED';
-          this.latestVehicleData.timestamp = new Date();
+      // Log all received data (especially Arduino debug messages)
+      if (trimmed.length > 0 && !trimmed.startsWith('DISTANCE:') && !trimmed.startsWith('TYPE:')) {
+        console.log(`[Arduino Serial] ${trimmed}`);
+      }
 
-          this.emit('vehicle-detected', this.latestVehicleData);
+      // Parse DISTANCE line: "DISTANCE: 36.80"
+      if (trimmed.startsWith('DISTANCE:')) {
+        const distance = parseFloat(trimmed.replace('DISTANCE:', '').trim());
+        this.currentDistance = distance;
+        
+        // ===== STABILITY TRACKING LOGIC =====
+        if (this.stabilityTracking.distance === null) {
+          // NEW OBJECT - start tracking
+          this.stabilityTracking.distance = distance;
+          this.stabilityTracking.type = this.currentType;
+          this.stabilityTracking.startTime = Date.now();
+          this.stabilityTracking.minDistance = distance;
+          this.stabilityTracking.maxDistance = distance;
+          
+          console.log(`📊 Started tracking ${this.currentType} at ${distance.toFixed(2)}cm`);
+          
+          // Set 5-second timer
+          if (this.stabilityTracking.timeout) {
+            clearTimeout(this.stabilityTracking.timeout);
+          }
+          
+          this.stabilityTracking.timeout = setTimeout(() => {
+            // Check if still within range
+            const range = this.stabilityTracking.maxDistance - this.stabilityTracking.minDistance;
+            if (range <= this.STABILITY_THRESHOLD) {
+              console.log(`✓ STABLE: ${this.stabilityTracking.type} at ${this.stabilityTracking.distance.toFixed(2)}cm (range: ${range.toFixed(2)}cm)`);
+              this.emitStableDetection();
+            }
+          }, this.STABILITY_WINDOW);
+        } else {
+          // OBJECT ALREADY BEING TRACKED - check if still within range
+          const distanceFromBase = Math.abs(distance - this.stabilityTracking.distance);
+          
+          if (distanceFromBase <= this.STABILITY_THRESHOLD) {
+            // Still within range - update min/max (no logging to reduce CPU)
+            this.stabilityTracking.minDistance = Math.min(this.stabilityTracking.minDistance, distance);
+            this.stabilityTracking.maxDistance = Math.max(this.stabilityTracking.maxDistance, distance);
+          } else {
+            // MOVED OUT OF RANGE - reset tracking
+            console.log(`⚠ Object moved: ${distance.toFixed(2)}cm out of range`);
+            this.resetStabilityTracking();
+          }
         }
-      } else if (data.includes('STATUS|')) {
-        // Parse component status from Arduino
-        // Format: STATUS|weight|servo:ok|ir:ok|hx711:ok|buck:ok|sonar:ok|timestamp
-        const parts = data.split('|');
-        if (parts.length >= 7) {
-          const weight = parseFloat(parts[1]);
+      }
+      // Parse EVENT line: "EVENT:DISTANCE|WEIGHT" (new format with distance and weight)
+      else if (trimmed.startsWith('EVENT:')) {
+        const eventData = trimmed.replace('EVENT:', '').trim();
+        const parts = eventData.split('|');
+        
+        if (parts.length === 2) {
+          const distance = parseFloat(parts[0]) || 0;
+          const weight = parseFloat(parts[1]) || 0;
           
-          // Update load cell weight
-          this.latestVehicleData.totalWeight = weight;
+          console.log(`📦 Event received: Distance=${distance.toFixed(1)}cm, Weight=${weight.toFixed(2)}kg, Type=${this.currentType}`);
+          
+          // ===== DISTANCE DEDUPLICATION =====
+          let shouldPassToGemini = true;
+          if (this.lastProcessedDistance !== null) {
+            const diff = Math.abs(distance - this.lastProcessedDistance);
+            if (diff < this.DISTANCE_CHANGE_THRESHOLD) {
+              console.log(`[DEDUPE] Distance unchanged - skipping Gemini`);
+              shouldPassToGemini = false;
+            }
+          }
+          if (shouldPassToGemini) {
+            this.lastProcessedDistance = distance;
+          }
+          
+          // Store latest weight and update total weight
+          this.latestVehicleData.weight = weight;
+          this.latestVehicleData.totalWeight = weight;  // Update total weight from current event
           this.latestVehicleData.timestamp = new Date();
           
-          // Parse component statuses
-          const parseComponentStatus = (statusStr) => {
-            return statusStr.includes('ok') ? 'connected' : 'warning';
-          };
-          
-          this.components.servo.status = parseComponentStatus(parts[2]); // servo:ok|fail
-          this.components.irSensor.status = parseComponentStatus(parts[3]); // ir:ok|fail
-          this.components.hx711.status = parseComponentStatus(parts[4]); // hx711:ok|fail
-          this.components.buckController.status = parseComponentStatus(parts[5]); // buck:ok|fail
-          this.components.sonar.status = parseComponentStatus(parts[6]); // sonar:ok|fail
-          
-          // Update load cells and all timestamps
+          // Update load cells - distribute weight across 4 cells
+          const perCell = weight / 4;
           Object.keys(this.loadCells).forEach(key => {
+            this.loadCells[key].value = perCell;
             this.loadCells[key].status = 'connected';
             this.loadCells[key].lastUpdate = new Date();
           });
           
-          this.components.loadCells.status = 'connected';
-          this.components.hx711.lastUpdate = new Date();
-          Object.keys(this.components).forEach(key => {
-            this.components[key].lastUpdate = new Date();
-          });
-          
-          this.emit('data-updated', {
-            loadCells: this.loadCells,
-            components: this.components,
-            vehicleData: this.latestVehicleData,
-          });
-        }
-      } else if (data.includes('Weight:')) {
-        // Parse individual weight readings from Arduino
-        const match = data.match(/Weight:\s*([\d.]+)/);
-        if (match) {
-          const weight = parseFloat(match[1]);
-          this.latestVehicleData.totalWeight = weight;
-          this.latestVehicleData.timestamp = new Date();
+          // Emit sonar-detected event for Gemini processing
+          if (shouldPassToGemini && this.currentType === 'OBJECT') {
+            this.emit('sonar-detected', {
+              distance: distance,
+              weight: weight,
+              timestamp: new Date().toISOString(),
+            });
+          }
         }
       }
+      // Parse TYPE line: "TYPE: HUMAN/VEHICLE/CLEAR/UNKNOWN"
+      else if (trimmed.startsWith('TYPE:')) {
+        const type = trimmed.replace('TYPE:', '').trim().toUpperCase();
+        this.currentType = type;
+        
+        if (type === 'CLEAR') {
+          this.resetStabilityTracking();
+        }
+      }
+      // Parse OBJECT LEFT line - Clear tracking
+      else if (trimmed.startsWith('OBJECT LEFT')) {
+        this.resetStabilityTracking();
+      }
 
+      // Mark Arduino as connected when receiving any data
+      if (!this.isConnected) {
+        console.log('✓ Arduino connected (data received)');
+        this.isConnected = true;
+      }
+      
       // Update component status on data reception
+      this.components.sonar.status = 'connected';
+      this.components.sonar.lastUpdate = new Date();
       this.components.loadCells.status = 'connected';
-      this.components.hx711.status = 'connected';
       this.components.loadCells.lastUpdate = new Date();
-
-      console.log('ℹ Arduino data:', data);
+      this.components.hx711.status = 'connected';
+      this.components.hx711.lastUpdate = new Date();
     } catch (error) {
       console.error('✗ Error parsing Arduino data:', error.message);
     }
+  }
+
+  /**
+   * Reset stability tracking
+   */
+  resetStabilityTracking() {
+    if (this.stabilityTracking.timeout) {
+      clearTimeout(this.stabilityTracking.timeout);
+    }
+    this.stabilityTracking = {
+      distance: null,
+      type: null,
+      startTime: null,
+      timeout: null,
+      minDistance: null,
+      maxDistance: null,
+    };
+  }
+
+  /**
+   * Emit stable detection after 5 seconds within ±10cm range
+   */
+  emitStableDetection() {
+    const { distance, type } = this.stabilityTracking;
+    
+    if (distance === null || type === null) return;
+
+    // Get latest weight from load cell (updated when EVENT:TYPE|WEIGHT is received)
+    const weight = this.latestVehicleData.weight || 0;
+
+    // Emit event for backend to process
+    if (type === 'HUMAN') {
+      this.emit('human-detected', {
+        distance: distance,
+        weight: weight,
+        type: 'HUMAN',
+        stability: 'stable-5s',
+        timestamp: new Date().toISOString(),
+      });
+    } else if (type === 'VEHICLE') {
+      this.emit('sonar-vehicle-detected', {
+        distance: distance,
+        weight: weight,
+        type: 'VEHICLE',
+        stability: 'stable-5s',
+        timestamp: new Date().toISOString(),
+      });
+    } else if (type === 'GROUND') {
+      this.emit('ground-detected', {
+        distance: distance,
+        weight: weight,
+        type: 'GROUND',
+        stability: 'stable-5s',
+        timestamp: new Date().toISOString(),
+      });
+    } else if (type === 'CEILING') {
+      this.emit('ceiling-detected', {
+        distance: distance,
+        weight: weight,
+        type: 'CEILING',
+        stability: 'stable-5s',
+        timestamp: new Date().toISOString(),
+      });
+    }
+    
+    // Reset tracking for next object
+    this.resetStabilityTracking();
+  }
+
+  /**
+   * Populate cell values from a single reported weight
+   */
+  updateLoadCellValues(weight) {
+    const perCell = weight / Object.keys(this.loadCells).length;
+    Object.keys(this.loadCells).forEach(key => {
+      this.loadCells[key].value = Math.round(perCell * 100) / 100;
+      this.loadCells[key].status = 'connected';
+      this.loadCells[key].lastUpdate = new Date();
+    });
   }
 
   /**
@@ -293,7 +457,7 @@ class ArduinoService extends EventEmitter {
       }, this.retryDelay);
     } else {
       console.log('✗ Max connection attempts reached, falling back to simulation');
-      this.initializeSimulation();
+      this.enableSimulationMode(true);
     }
   }
 
@@ -326,10 +490,13 @@ class ArduinoService extends EventEmitter {
    */
   getLoadCellData() {
     return {
-      cells: this.loadCells,
-      totalWeight: this.latestVehicleData.totalWeight,
+      L1: this.loadCells.L1,
+      L2: this.loadCells.L2,
+      L3: this.loadCells.L3,
+      L4: this.loadCells.L4,
+      totalWeight: this.latestVehicleData.totalWeight || 0,
       timestamp: this.latestVehicleData.timestamp,
-      status: this.latestVehicleData.allowed ? 'ALLOWED' : 'BLOCKED',
+      status: this.isConnected ? 'CONNECTED' : 'DISCONNECTED',
     };
   }
 
@@ -337,8 +504,14 @@ class ArduinoService extends EventEmitter {
    * Get component health status
    */
   getComponentStatus() {
+    // Check if we've received data recently
+    const lastDataTime = this.latestVehicleData.timestamp ? new Date(this.latestVehicleData.timestamp).getTime() : 0;
+    const now = Date.now();
+    const timeSinceLastData = now - lastDataTime;
+    const isConnected = this.isConnected || timeSinceLastData < 10000;
+    
     // If Arduino is not connected, mark all components as disconnected
-    if (!this.isConnected) {
+    if (!isConnected) {
       return {
         loadCells: { status: 'disconnected', lastUpdate: null },
         hx711: { status: 'disconnected', lastUpdate: null },
@@ -364,10 +537,20 @@ class ArduinoService extends EventEmitter {
    * Get connection status
    */
   getConnectionStatus() {
+    // Check if we've received data recently (within last 10 seconds)
+    const lastDataTime = this.latestVehicleData.timestamp ? new Date(this.latestVehicleData.timestamp).getTime() : 0;
+    const now = Date.now();
+    const timeSinceLastData = now - lastDataTime;
+    const isRecentlyConnected = timeSinceLastData < 10000;  // Connected if data received in last 10 seconds
+    
+    const connected = this.isConnected || isRecentlyConnected;
+    
     return {
-      isConnected: this.isConnected,
-      mode: this.serialPort && this.isConnected ? 'hardware' : 'simulation',
+      isConnected: connected,
+      connected: connected,  // For compatibility with frontend
+      mode: connected && this.serialPort ? 'hardware' : 'simulation',
       components: this.components,
+      lastDataReceived: this.latestVehicleData.timestamp,
     };
   }
 
@@ -387,6 +570,36 @@ class ArduinoService extends EventEmitter {
 
   closeBarrier() {
     return this.sendCommand('CLOSE');
+  }
+
+  /**
+   * Send allow command to servo (gate opens)
+   */
+  allowDetection() {
+    console.log('✓ Sending ALLOW command to Arduino (opening gate)');
+    return this.sendCommand('CMD:ALLOW');
+  }
+
+  /**
+   * Send block command to servo (gate stays closed)
+   */
+  blockDetection() {
+    console.log('✓ Sending BLOCK command to Arduino (keeping gate closed)');
+    return this.sendCommand('CMD:BLOCK');
+  }
+
+  /**
+   * Get current live weight (latest reading from load cell)
+   */
+  getLiveWeight() {
+    return this.latestVehicleData.weight || 0;
+  }
+
+  /**
+   * Set weight limit
+   */
+  setWeightLimit(limitKg) {
+    return this.sendCommand(`CMD:SET_LIMIT:${limitKg}`);
   }
 
   /**
@@ -418,6 +631,27 @@ class ArduinoService extends EventEmitter {
     this.isConnected = false;
     this.simulationMode = false;
   }
+
+  /**
+   * Subscribe to vehicle detection events (compatibility with irEventService)
+   */
+  onVehicleDetected(callback) {
+    this.on('vehicle_detected', callback);
+  }
+
+  /**
+   * Subscribe to weight updates
+   */
+  onWeightUpdate(callback) {
+    this.on('weight_update', callback);
+  }
+
+  /**
+   * Subscribe to barrier status changes
+   */
+  onBarrierStatus(callback) {
+    this.on('barrier_status', callback);
+  }
 }
 
 // Singleton instance
@@ -438,3 +672,4 @@ module.exports = {
 
   ArduinoService,
 };
+

@@ -1,0 +1,2307 @@
+================================================================================
+                        LOADGATE - COMPREHENSIVE REPORT
+         Smart Vehicle Weighing & Access Control System
+================================================================================
+
+DOCUMENT VERSION: 1.0
+DATE: May 19, 2026
+PROJECT STATUS: Active Development
+
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+1.  Executive Summary
+2.  Project Overview & Vision
+3.  System Architecture
+4.  Hardware Components
+5.  Technology Stack
+6.  Arduino Firmware (Embedded System)
+7.  Backend API (Node.js/Express)
+8.  Frontend Application (Next.js/React)
+9.  Database Design & Models
+10. API Endpoints & Integration
+11. Core Features & Capabilities
+12. Installation & Configuration
+13. System Workflow & Process Flow
+14. Security & Authentication
+15. Export & Reporting Features
+16. Performance Metrics
+17. Future Enhancements
+18. Deployment & Operations
+19. Troubleshooting Guide
+20. Conclusion
+
+
+================================================================================
+1. EXECUTIVE SUMMARY
+================================================================================
+
+LoadGate is a comprehensive IoT-enabled smart vehicle weighing and access 
+control system designed for modern logistics, toll gates, and vehicle 
+management facilities. The system integrates hardware sensors, embedded 
+microcontroller logic, and a full-stack web application to provide real-time 
+vehicle monitoring, automated barrier control, and comprehensive data analytics.
+
+KEY HIGHLIGHTS:
+• Real-time vehicle weight measurement using dual load cells (4×100kg capacity)
+• Automated gate control based on weight thresholds
+• Live vehicle imaging and license plate detection using AI (Google Gemini)
+• Comprehensive web dashboard for monitoring and analytics
+• Multi-export formats (PDF, Excel, DOCX)
+• Role-based authentication and access control
+• Server-Sent Events (SSE) for real-time updates
+• Full REST API for third-party integrations
+• Mobile-responsive web interface
+
+TARGET USERS:
+• Toll gate operators
+• Logistics facility managers
+• Vehicle weighing stations
+• Border crossing checkpoints
+• Fleet management centers
+
+
+================================================================================
+2. PROJECT OVERVIEW & VISION
+================================================================================
+
+MISSION:
+To provide an automated, intelligent vehicle management solution that combines
+hardware sensors with cloud-based analytics to streamline vehicle access 
+control, improve facility operations, and maintain comprehensive digital records.
+
+CORE OBJECTIVES:
+1. Automate vehicle detection and weight measurement
+2. Provide real-time decision making (allow/block access)
+3. Capture and store vehicle images for records
+4. Enable data-driven insights through analytics
+5. Deliver intuitive user interfaces for operators
+6. Support integration with third-party systems
+
+BUSINESS BENEFITS:
+• Increased throughput at checkpoints
+• Reduced manual intervention
+• Improved compliance tracking
+• Enhanced security audit trails
+• Data-driven decision making
+• Scalable and future-proof architecture
+
+
+================================================================================
+3. SYSTEM ARCHITECTURE
+================================================================================
+
+LoadGate follows a three-tier architecture:
+
+TIER 1: HARDWARE LAYER (Arduino + Sensors)
+└─ Embedded microcontroller with sensor integration
+└─ Real-time data capture and initial processing
+└─ Barrier control actuation
+└─ Serial communication with backend
+
+TIER 2: BACKEND LAYER (Node.js/Express + MongoDB)
+└─ RESTful API for frontend communication
+└─ Business logic and decision processing
+└─ Database persistence
+└─ External service integration (Camera, Gemini AI)
+└─ Real-time event streaming
+
+TIER 3: FRONTEND LAYER (Next.js/React)
+└─ Web-based user interface
+└─ Real-time data visualization
+└─ Report generation and export
+└─ User authentication and settings
+└─ Responsive design for mobile/tablet/desktop
+
+COMMUNICATION FLOW:
+Arduino ─(Serial/USB)─> Backend ─(REST API)─> Frontend
+         ─(Commands)──>         <─(SSE Events)─
+
+The system uses event-driven architecture with the Arduino as the primary 
+data source. The backend orchestrates data flow and business logic, while the 
+frontend provides visualization and user control.
+
+
+================================================================================
+4. HARDWARE COMPONENTS
+================================================================================
+
+PRIMARY COMPONENTS:
+
+1. MICROCONTROLLER: Arduino Uno or Mega
+   - Processor: ATmega328P (Uno) or ATmega2560 (Mega)
+   - Operating Voltage: 5V
+   - Digital I/O Pins: 14 (Uno) or 54 (Mega)
+   - Analog Input Pins: 6 (Uno) or 16 (Mega)
+   - Clock Speed: 16 MHz
+   - Function: Central controller for all sensors and actuators
+
+2. LOAD CELLS: 4 × 100kg Strain Gauge Sensors
+   - Type: Compression/tension type
+   - Capacity: 100kg each
+   - Output: Analog (via HX711 amplifier)
+   - Wiring Configuration:
+     * Cell 1 & 3 (Left/Right): Parallel connection
+     * Cell 2 & 4 (Front/Rear): Parallel connection
+     * Output: Combined to single HX711 for total weight
+   - Accuracy: ±0.5% of full scale
+   - Function: Measure vehicle weight
+
+3. HX711 LOAD CELL AMPLIFIER
+   - Type: 24-bit ADC (Analog-to-Digital Converter)
+   - Communication: SPI protocol with Arduino
+   - Pin Connections:
+     * DT (Data) → Arduino Pin 13
+     * SCK (Clock) → Arduino Pin 12
+   - Calibration Factor: 4.58 (configured in firmware)
+   - Function: Amplify and digitize analog signals from load cells
+
+4. SONAR SENSOR: Ultrasonic Distance Measurement
+   - Type: HC-SR04 or equivalent
+   - Measurement Range: 2cm - 400cm
+   - Pin Connections:
+     * TRIG (Trigger) → Arduino Pin 9
+     * ECHO (Echo) → Arduino Pin 10
+   - Update Rate: ~100ms
+   - Function: Detect object presence and distance
+
+5. SERVO MOTOR: Barrier Gate Control
+   - Type: Standard RC servo (180° rotation)
+   - Operating Voltage: 5V
+   - Pin Connection: Arduino Pin 11
+   - Position Control:
+     * 0° = Gate Closed (blocking vehicles)
+     * 90° = Gate Open (allowing vehicles)
+   - Movement Time: ~400ms per position change
+   - Function: Automated barrier actuation
+
+6. IR SENSOR: Vehicle Presence Detection
+   - Type: Infrared motion/presence detector
+   - Function: Trigger initial detection event
+   - Note: Current firmware uses sonar for main detection
+
+7. IP CAMERA: Vehicle Image Capture
+   - Purpose: Capture vehicle images for records
+   - Integration: Via camera service API
+   - Image Storage: Local storage with reference in database
+
+8. POWER SUPPLY
+   - Arduino: 5V via USB or external power adapter
+   - Servo Motor: 5V (can draw 1-2A during movement)
+   - Load Cells: 5V excitation voltage
+   - HX711: 5V
+   - Recommendation: 2A+ power supply for stability
+
+POWER MANAGEMENT:
+- Buck Converter: Converts main supply (12V/24V) to 5V for electronics
+- Provides stable voltage regulation
+- Protects sensitive components
+
+
+================================================================================
+5. TECHNOLOGY STACK
+================================================================================
+
+FRONTEND STACK:
+├─ Framework: Next.js 14.0.0 (React 18.2.0 based)
+├─ UI Library: React 18.2.0 with JSX
+├─ Styling: Tailwind CSS 3.3.0 (utility-first)
+├─ State Management: Zustand 4.4.0
+├─ HTTP Client: Axios 1.6.0
+├─ Charts: Chart.js 4.4.0 + React-ChartJS-2 5.2.0
+├─ Icons: React-Icons 4.12.0
+├─ Date Handling: Date-FNS 2.30.0
+├─ Export: Html2Canvas 1.4.1, Canvas2SVG 1.0.16
+├─ Build Tools: TypeScript 5.2.0, ESLint, Prettier
+└─ Deployment: Node.js server with next start
+
+BACKEND STACK:
+├─ Runtime: Node.js 16+ (JavaScript)
+├─ Framework: Express.js 4.18.2 (REST API)
+├─ Database: MongoDB 7.5+ (NoSQL document store)
+├─ ODM: Mongoose 7.5.3 (MongoDB schema management)
+├─ Serial Communication: SerialPort 10.1.0 (Arduino communication)
+├─ External APIs: Google Generative AI (Gemini)
+├─ File Processing:
+│  ├─ ExcelJS 4.4.0 (Excel export)
+│  ├─ PDFKit 0.18.0 (PDF generation)
+│  └─ DOCX 9.6.1 (Word document export)
+├─ Image Processing: Sharp 0.32.6
+├─ Security: 
+│  ├─ bcryptjs 2.4.3 (password hashing)
+│  └─ jsonwebtoken 9.0.2 (JWT authentication)
+├─ Middleware: CORS, Morgan (logging)
+├─ Development: Nodemon 3.0.0 (auto-reload)
+└─ Testing: Jest 29.7.0 (unit testing)
+
+ARDUINO STACK:
+├─ Platform: Arduino IDE 2.0+
+├─ Board Support: Arduino AVR Boards
+├─ Core Libraries:
+│  ├─ Servo.h (PWM servo control)
+│  └─ HX711.h (Load cell communication)
+├─ Communication: Serial (9600 baud)
+├─ Build System: Arduino sketch compilation
+└─ Upload Protocol: AVRISP ISP
+
+INFRASTRUCTURE:
+├─ Operating System: Windows, Linux, or macOS
+├─ Database Hosting: Local or cloud MongoDB (Atlas)
+├─ Backend Hosting: Docker, Node server, or cloud platform
+├─ Frontend Hosting: Vercel, Netlify, or Node server
+└─ Development Environment: Visual Studio Code
+
+
+================================================================================
+6. ARDUINO FIRMWARE (EMBEDDED SYSTEM)
+================================================================================
+
+The Arduino firmware handles real-time sensor data acquisition, object 
+classification, and gate control logic.
+
+FIRMWARE ENTRY POINT: loadgate.ino (293 lines of C++ code)
+
+PIN CONFIGURATION:
+├─ Pin 9:  Sonar TRIG (Digital Output)
+├─ Pin 10: Sonar ECHO (Digital Input)
+├─ Pin 11: Servo Motor (PWM Output)
+├─ Pin 12: HX711 SCK (SPI Clock)
+└─ Pin 13: HX711 DT (SPI Data)
+
+MAIN COMPONENTS:
+
+1. INITIALIZATION (setup())
+   - Serial communication: 9600 baud
+   - Sonar sensor pins configured
+   - Servo motor initialized to closed position (0°)
+   - Load cell HX711 calibration
+   - System initialization messages sent to serial
+   - All components verified and ready
+
+2. MAIN LOOP (loop())
+   - Executes every 100ms (SAMPLE_DELAY = 100)
+   - Continuously monitors sonar distance
+   - Classifies detected objects (GROUND/HUMAN/VEHICLE/CEILING/CLEAR)
+   - Logs live weight readings
+   - Checks for backend commands
+   - Auto-closes gate after 40 seconds of opening
+   - Manages object presence state
+
+3. SONAR SENSOR READING (readSonar())
+   - Triggers ultrasonic pulse
+   - Measures echo duration
+   - Calculates distance: distance = (duration × 0.0343) / 2
+   - Range validation: -1 for invalid readings (0 or > 400cm)
+   - Resolution: ~1cm accuracy
+   - Called every loop iteration
+
+4. OBJECT CLASSIFICATION (classify())
+   Distance ranges and object types:
+   ├─ 0cm or negative: CLEAR (no object)
+   ├─ 0-10cm: GROUND (sensor facing floor)
+   ├─ 10-80cm: HUMAN (person detected)
+   ├─ 80-300cm: VEHICLE (vehicle detected)
+   ├─ 300-350cm: CEILING (sensor facing roof)
+   ├─ >350cm: CLEAR (out of range)
+   └─ Unmapped: UNKNOWN
+
+5. LOAD CELL WEIGHT READING
+   
+   Two functions:
+   
+   a) readWeight() - HIGH ACCURACY (Detection)
+      - Reads 10 samples at 30ms intervals
+      - Averages all samples for accuracy
+      - Used when new object detected
+      - Returns float weight in kg
+      - Non-negative validation
+      
+   b) readWeightNonBlocking() - FAST (Live Display)
+      - Single fast reading
+      - No delay or averaging
+      - Used for continuous monitoring
+      - Returns immediate weight value
+      - For dashboard updates
+
+6. SERVO GATE CONTROL (moveServo())
+   - Accepts angle 0-180 degrees
+   - Angle constraints: 0° to 180°
+   - Movement time: 400ms per position
+   - SERVO_CLOSED = 0° (blocks entry)
+   - SERVO_OPEN = 90° (allows entry)
+
+7. SERIAL COMMAND HANDLER (checkSerialCommands())
+   Supported commands from backend:
+   
+   - CMD:ALLOW
+     Action: Open gate to 90°
+     Starts 40-second auto-close timer
+     Allows new detections after
+   
+   - CMD:BLOCK
+     Action: Keep gate closed at 0°
+     Stops any pending operations
+     Allows new detections
+   
+   - CMD:SET_LIMIT:VALUE
+     Action: Update weight limit (parsed but not used in firmware)
+     Backend maintains actual limit logic
+   
+   Command format: "CMD:ACTION" or "CMD:ACTION:VALUE"
+   Terminated with newline character
+
+8. STATE TRACKING VARIABLES
+   - objectPresent: Boolean, tracks if object in range
+   - detectionProcessing: Lock to prevent duplicate detections
+   - lastSeenTime: Timestamp of last detection (resets after 1.5s)
+   - gateOpenedTime: Timestamp when gate opened
+   - lastReadWeight: Last weight measurement
+   
+   Timing constants:
+   - RESET_TIME = 1500ms (object gone timeout)
+   - GATE_AUTO_CLOSE = 40000ms (auto-close timeout)
+   - SAMPLE_DELAY = 100ms (main loop delay)
+
+DETECTION LOGIC:
+1. Sonar reads distance continuously
+2. Distance classified to type (VEHICLE, HUMAN, etc.)
+3. If not processing AND type is valid:
+   a. Check if new object (wasn't present OR > 1.5s since last)
+   b. If new: Set objectPresent=true, lock detection, read weight
+   c. Format event: "EVENT:VEHICLE|3500.25" (type|weight)
+   d. Send to backend via serial
+   e. Wait for backend decision (ALLOW/BLOCK command)
+4. If type = CLEAR AND object was present AND > 1.5s:
+   a. Object has left
+   b. Close gate
+   c. Reset state
+
+SERIAL COMMUNICATION:
+Format: One message per line (newline-terminated)
+Baud Rate: 9600
+Messages sent:
+- "DISTANCE: X.XX" (every loop, in cm)
+- "TYPE: VEHICLE" (every loop)
+- "LIVE_WEIGHT: X.XX kg" (every loop, non-blocking)
+- "EVENT:VEHICLE|3500.25" (on new detection)
+- "OBJECT LEFT" (when object leaves)
+- "SERVO_MOVED: 90" (after servo movement)
+
+CALIBRATION:
+- HX711 calibration factor: 4.58
+- Configured in firmware: CALIBRATION_FACTOR constant
+- Calibration steps:
+  1. Run TARE command to zero the scale
+  2. Place known weight (e.g., 50kg) on sensor
+  3. Note reading from serial monitor
+  4. Adjust CALIBRATION_FACTOR up/down
+  5. Re-upload and test
+  6. Repeat until accurate
+
+
+================================================================================
+7. BACKEND API (Node.js/Express)
+================================================================================
+
+ARCHITECTURE:
+
+The backend is built on Express.js and provides RESTful API endpoints for the 
+frontend, manages Arduino communication, handles external service integrations,
+and persists data to MongoDB.
+
+STARTUP PROCESS:
+1. Load environment variables from .env file
+2. Connect to MongoDB
+3. Initialize Arduino service
+4. Setup route handlers
+5. Start HTTP server on configured port (default: 5000)
+6. Listen for incoming requests and events
+
+CORE SERVICES:
+
+1. ARDUINO SERVICE (arduinoService.js)
+   - Manages serial port communication with Arduino
+   - Emits events:
+     * 'data-updated': When load cell data changes
+     * 'vehicle-detected': When vehicle detected with weight
+     * 'sonar-detected': When sonar triggers (distance change)
+   - Tracks component status (all 7 components)
+   - Stores latest vehicle data
+   - Provides API endpoints for status checks
+   - Fallback to simulation mode if hardware unavailable
+   - Retry logic with exponential backoff
+
+2. CAMERA SERVICE (cameraService.js)
+   - Interfaces with IP camera
+   - Captures snapshots of vehicles
+   - Retrieves live stream URL
+   - Validates camera connectivity
+   - Stores captured images locally
+
+3. FRAME CAPTURE SERVICE (frameCaptureService.js)
+   - Captures video frames from camera stream
+   - Saves frames to local storage with timestamp
+   - Provides frame path for AI processing
+   - Used for license plate detection
+
+4. GEMINI SERVICE (geminiService.js)
+   - Integrates with Google Generative AI (Gemini)
+   - Sends captured images for analysis
+   - Extracts license plate information
+   - Detects vehicle attributes:
+     * License plate number
+     * Vehicle type (car, truck, bus, etc.)
+     * Color
+     * Make and model
+     * Confidence scores
+   - Error handling and fallback logic
+
+MIDDLEWARE STACK:
+├─ CORS: Allows frontend requests from configured origin
+├─ JSON Parser: Parses request bodies (50MB limit)
+├─ URL Encoder: Handles form-encoded data
+├─ Morgan: Logs all HTTP requests
+├─ Static Files: Serves captured images from /public folder
+└─ Error Handlers: Global error handling
+
+ROUTE STRUCTURE:
+├─ vehicleRoutes.js: /api/vehicles/* (CRUD operations)
+├─ arduinoRoutes.js: /api/arduino/* (sensor data, commands)
+├─ cameraRoutes.js: /api/camera/* (image capture)
+├─ detectionRoutes.js: /api/detection/* (AI detection results)
+├─ systemRoutes.js: /api/system/* (health, analytics)
+└─ authRoutes.js: /api/auth/* (login, tokens)
+
+KEY ENDPOINTS:
+
+SYSTEM:
+- GET /api/health
+  Response: { status: "ok", message: "...", timestamp: "..." }
+
+VEHICLES (CRUD):
+- GET /api/vehicles (list with filters, pagination)
+  Query params: page, limit, status, search, weightMin, weightMax, dateFrom, dateTo
+  
+- POST /api/vehicles (create new record)
+  Body: { weight, status, image, carNumber }
+  
+- GET /api/vehicles/:id (get specific vehicle)
+  
+- DELETE /api/vehicles/:id (remove record)
+
+ANALYTICS:
+- GET /api/vehicles/analytics/summary
+  Response: { totalVehicles, allowed, blocked, avgWeight, ... }
+
+ARDUINO:
+- GET /api/arduino/status
+  Response: Current connection status and component health
+  
+- POST /api/arduino/command
+  Body: { action: "ALLOW" | "BLOCK", data: {...} }
+  Sends command to Arduino via serial
+  
+- GET /api/arduino/events/stream
+  Returns Server-Sent Events (SSE) stream
+  Streams real-time updates from Arduino
+
+EXPORT:
+- GET /api/vehicles/export/pdf
+  Returns PDF file with all vehicle records
+  
+- GET /api/vehicles/export/excel
+  Returns Excel file with formatted data
+  
+- GET /api/vehicles/export/docx
+  Returns Word document with records
+
+DATABASE CONNECTIVITY:
+- MongoDB URI: from .env (MONGODB_URI)
+- Connection method: Mongoose ORM
+- Schemas: Vehicle, Settings (Models)
+- Indexes: Created on frequently queried fields
+  (status, timestamp, licensePlate, carNumber)
+
+
+================================================================================
+8. FRONTEND APPLICATION (Next.js/React)
+================================================================================
+
+ARCHITECTURE:
+
+The frontend is a modern SPA (Single Page Application) built with Next.js, 
+providing a responsive web interface for monitoring and managing the LoadGate 
+system.
+
+TECHNOLOGY HIGHLIGHTS:
+- Next.js 14: Server-side rendering, static generation, API routes
+- React 18: Component-based UI with hooks
+- Tailwind CSS: Rapid UI development with utility classes
+- Zustand: Lightweight state management
+- Chart.js: Data visualization
+
+PROJECT STRUCTURE:
+
+src/pages/
+├─ _app.jsx: Global app wrapper, authentication context, theme
+├─ _debug-icons.jsx: Icon debugging/testing page
+├─ index.jsx: Home dashboard page
+├─ vehicles.jsx: Vehicle records list page
+├─ analytics.jsx: Analytics and statistics page
+├─ settings.jsx: System configuration page
+└─ login.jsx: User authentication page
+
+src/components/
+├─ Layout.jsx: Main layout wrapper with sidebar and header
+├─ Dashboard.jsx: Home page dashboard content
+├─ Sidebar.jsx: Navigation sidebar
+├─ ExportModal.jsx: Export options modal
+├─ ExportFormatDropdown.jsx: Export format selector
+├─ Icon.jsx: Icon component wrapper
+├─ SafeIcon.jsx: Safe icon fallback component
+└─ LoadingScreen.jsx: Loading state display
+
+src/context/
+├─ AuthContext.jsx: Authentication state and methods
+├─ ThemeContext.jsx: Dark/light theme toggle
+└─ LoadingContext.jsx: Global loading state
+
+src/utils/
+├─ api.js: Axios HTTP client with base configuration
+├─ store.js: Zustand store for global state
+├─ config.js: Application configuration
+├─ chartExport.js: Chart export functionality
+├─ checkIcons.js: Icon validation utilities
+└─ loadingScreenChecker.js: Loading screen checker
+
+src/styles/
+└─ globals.css: Global styles and Tailwind directives
+
+PAGES OVERVIEW:
+
+1. HOME PAGE (/)
+   - Dashboard with system overview
+   - Recent vehicles statistics
+   - System health status
+   - Quick access to main features
+   - Real-time data updates via API polling
+
+2. VEHICLES PAGE (/vehicles)
+   - Complete table of all vehicle records
+   - Columns: Timestamp, Car Number, Weight, Status, Actions
+   - Filtering by status (ALL, ALLOWED, BLOCKED)
+   - Search by car number
+   - Pagination (10, 25, 50 items per page)
+   - Sorting by timestamp or weight
+   - View/Delete actions per record
+   - Image preview when available
+
+3. ANALYTICS PAGE (/analytics)
+   - Statistical overview
+   - Total vehicles processed
+   - Allowed vs blocked breakdown
+   - Average vehicle weight
+   - Charts and graphs
+   - Export statistics
+
+4. SETTINGS PAGE (/settings)
+   - Max weight limit configuration
+   - Calibration factor adjustment
+   - System name and location
+   - Component status monitoring
+   - Live load cell readings (all 4 cells)
+   - Health status indicators
+   - System information display
+
+5. LOGIN PAGE (/login)
+   - User authentication form
+   - Email and password input
+   - Sign-in button
+   - Redirects to home on success
+   - Error messaging
+
+COMPONENT DESCRIPTIONS:
+
+Layout.jsx:
+- Main application wrapper
+- Includes header with branding
+- Sidebar with navigation menu
+- Responsive mobile/tablet layout
+- Theme toggle button
+
+Dashboard.jsx:
+- Home page content
+- System status cards
+- Recent vehicles list
+- Summary statistics
+- Quick action buttons
+
+ExportModal.jsx:
+- Modal dialog for export options
+- Format selection (PDF, Excel, Word)
+- Export button
+- Cancel button
+- File download handling
+
+STATE MANAGEMENT (Zustand):
+Store structure:
+{
+  vehicles: [],
+  settings: {},
+  currentUser: {},
+  isLoading: false,
+  error: null,
+  // Actions
+  setVehicles: function(),
+  setSettings: function(),
+  setCurrentUser: function(),
+  setLoading: function(),
+  fetchVehicles: async function(),
+  createVehicle: async function(),
+  deleteVehicle: async function()
+}
+
+API INTEGRATION:
+- Base URL: from config.js (http://localhost:5000/api)
+- Axios instance with default headers
+- Error handling with user feedback
+- Loading states during requests
+- Automatic request/response formatting
+
+AUTHENTICATION:
+- Token stored in localStorage
+- JWT-based authentication
+- Protected routes redirect to login
+- Auth context provides user info
+- Logout clears token and redirects
+
+STYLING APPROACH:
+- Utility-first Tailwind CSS
+- Custom component classes in globals.css
+- Responsive breakpoints (mobile, tablet, desktop)
+- Dark/light theme support via ThemeContext
+- Color schemes and spacing defined in tailwind.config.js
+
+DATA FETCHING:
+- getInitialProps / getServerSideProps for SSR
+- useEffect hooks for client-side fetching
+- Real-time polling for live updates
+- Error boundaries for fault tolerance
+- Skeleton loading states during fetch
+
+
+================================================================================
+9. DATABASE DESIGN & MODELS
+================================================================================
+
+DATABASE: MongoDB (NoSQL Document Store)
+
+CONNECTION:
+- URI: mongodb://localhost:27017/loadgate (development)
+- Or: MongoDB Atlas cloud instance
+- Mongoose ORM for schema management
+
+PRIMARY COLLECTIONS:
+
+1. VEHICLES COLLECTION
+   Document Structure:
+   {
+     _id: ObjectId,
+     weight: Number (kg),
+     status: String ("ALLOWED" | "BLOCKED" | "UNKNOWN"),
+     image: String (image file path),
+     carNumber: String (license plate/car number),
+     licensePlate: String (extracted by AI),
+     detectionType: String ("sonar" | "ir" | "weight" | "manual"),
+     category: String ("vehicle" | "human" | "unknown" | "other"),
+     framePath: String (path to captured frame),
+     
+     // AI Detection Results
+     geminiDetection: {
+       licensePlate: String,
+       confidence: Number (0-1),
+       vehicleType: String,
+       color: String,
+       make: String,
+       model: String,
+       detected: Boolean,
+       notes: String,
+       detectedAt: Date
+     },
+     
+     // Physical Characteristics
+     sonarDistance: Number (cm),
+     vehicleInfo: {
+       type: String ("car" | "truck" | "bus" | "motorcycle" | "other"),
+       color: String,
+       make: String,
+       model: String
+     },
+     
+     timestamp: Date (indexed),
+     createdAt: Date,
+     updatedAt: Date
+   }
+
+   Indexes:
+   - timestamp (sorted for time-series queries)
+   - status (filtered for ALLOWED/BLOCKED views)
+   - carNumber (searched for specific vehicles)
+   - licensePlate (AI detection results)
+   - detectionType (filtered views)
+
+2. SETTINGS COLLECTION
+   Document Structure:
+   {
+     _id: ObjectId,
+     maxWeightLimit: Number (kg),
+     calibrationFactor: Number,
+     systemName: String,
+     location: String,
+     isActive: Boolean,
+     arduinoPort: String (COM port path),
+     cameraSensitivity: Number,
+     gateAutoCloseTime: Number (seconds),
+     createdAt: Date,
+     updatedAt: Date
+   }
+
+3. USERS COLLECTION (Authentication)
+   Document Structure:
+   {
+     _id: ObjectId,
+     email: String (unique, indexed),
+     password: String (bcrypt hashed),
+     name: String,
+     role: String ("admin" | "operator" | "viewer"),
+     isActive: Boolean,
+     lastLogin: Date,
+     createdAt: Date,
+     updatedAt: Date
+   }
+
+RELATIONSHIPS:
+- Vehicles → Many-to-one relationship with Settings
+- Vehicles → Optional relationship with Users (captured by user)
+- Settings → Global configuration (typically one document)
+
+QUERIES COMMONLY USED:
+1. Recent vehicles (last 24 hours):
+   db.vehicles.find({ timestamp: { $gte: Date(now - 86400000) } })
+
+2. Vehicles by status:
+   db.vehicles.find({ status: "BLOCKED" }).limit(100)
+
+3. Average weight analysis:
+   db.vehicles.aggregate([
+     { $match: { timestamp: { $gte: Date(...) } } },
+     { $group: { _id: null, avgWeight: { $avg: "$weight" } } }
+   ])
+
+4. Find by license plate:
+   db.vehicles.findOne({ licensePlate: "ABC123" })
+
+5. Weight limit exceeded:
+   db.vehicles.find({ weight: { $gt: maxLimit } })
+
+INDEXING STRATEGY:
+- Composite index on (status, timestamp) for filtered time-series queries
+- Single index on carNumber for search optimization
+- TTL index on timestamp for optional auto-deletion of old records
+- Indexes created on first query if not exists
+
+
+================================================================================
+10. API ENDPOINTS & INTEGRATION
+================================================================================
+
+API BASE URL: http://localhost:5000/api
+
+AUTHENTICATION ENDPOINTS:
+
+POST /auth/login
+Request:
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+Response:
+{
+  "success": true,
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "user": {
+    "id": "...",
+    "email": "user@example.com",
+    "name": "User Name",
+    "role": "admin"
+  }
+}
+
+POST /auth/logout
+Response:
+{
+  "success": true,
+  "message": "Logged out successfully"
+}
+
+VEHICLE ENDPOINTS:
+
+GET /vehicles
+Query Parameters:
+- page: 1 (default)
+- limit: 10 (default)
+- status: "ALLOWED" | "BLOCKED" | "all" (optional)
+- search: "carNumber" (optional)
+- weightMin: number (optional)
+- weightMax: number (optional)
+- dateFrom: "2026-05-01" (optional)
+- dateTo: "2026-05-19" (optional)
+- sort: "timestamp-desc" (default)
+
+Response:
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "...",
+      "carNumber": "ABC123",
+      "weight": 3500.25,
+      "status": "ALLOWED",
+      "timestamp": "2026-05-19T10:30:00Z",
+      "image": "/public/captures/image_20260519_103000.jpg",
+      "licensePlate": "ABC-123-XYZ"
+    }
+  ],
+  "pagination": {
+    "currentPage": 1,
+    "totalPages": 10,
+    "totalRecords": 95,
+    "recordsPerPage": 10
+  }
+}
+
+GET /vehicles/:id
+Response:
+{
+  "success": true,
+  "data": {
+    "_id": "...",
+    "carNumber": "ABC123",
+    "weight": 3500.25,
+    "status": "ALLOWED",
+    "timestamp": "2026-05-19T10:30:00Z",
+    "image": "/public/captures/image_20260519_103000.jpg",
+    "geminiDetection": {
+      "licensePlate": "ABC-123-XYZ",
+      "confidence": 0.95,
+      "vehicleType": "SUV",
+      "color": "Black",
+      "make": "Toyota",
+      "model": "Highlander"
+    }
+  }
+}
+
+POST /vehicles
+Request:
+{
+  "weight": 3500.25,
+  "status": "ALLOWED",
+  "carNumber": "ABC123",
+  "image": "/public/captures/image.jpg"
+}
+Response:
+{
+  "success": true,
+  "message": "Vehicle record created",
+  "data": { ... }
+}
+
+DELETE /vehicles/:id
+Response:
+{
+  "success": true,
+  "message": "Vehicle record deleted"
+}
+
+ARDUINO ENDPOINTS:
+
+GET /arduino/status
+Response:
+{
+  "isConnected": true,
+  "loadCells": {
+    "L1": { "value": 850.5, "status": "connected" },
+    "L2": { "value": 875.3, "status": "connected" },
+    "L3": { "value": 840.2, "status": "connected" },
+    "L4": { "value": 860.1, "status": "connected" },
+    "totalWeight": 3426.1
+  },
+  "components": {
+    "servo": { "status": "connected" },
+    "irSensor": { "status": "connected" },
+    "hx711": { "status": "connected" },
+    "sonar": { "status": "connected" },
+    "camera": { "status": "connected" }
+  }
+}
+
+POST /arduino/command
+Request:
+{
+  "action": "ALLOW",
+  "vehicleId": "...",
+  "decision": true
+}
+Response:
+{
+  "success": true,
+  "message": "Command sent to Arduino",
+  "command": "CMD:ALLOW"
+}
+
+GET /arduino/events/stream
+Returns Server-Sent Events stream:
+data: {"type":"vehicle-detected","weight":3500.25,"timestamp":"..."}
+data: {"type":"gate-opened","angle":90,"timestamp":"..."}
+data: {"type":"gate-closed","angle":0,"timestamp":"..."}
+
+ANALYTICS ENDPOINTS:
+
+GET /vehicles/analytics/summary
+Response:
+{
+  "totalVehicles": 1543,
+  "allowed": 1450,
+  "blocked": 93,
+  "avgWeight": 3400.5,
+  "maxWeight": 8500.0,
+  "minWeight": 500.0,
+  "timeframe": "all-time",
+  "allowanceRate": 94.0
+}
+
+GET /vehicles/analytics/daily
+Response:
+{
+  "data": [
+    {
+      "date": "2026-05-19",
+      "count": 125,
+      "allowed": 118,
+      "blocked": 7,
+      "avgWeight": 3410.5
+    }
+  ]
+}
+
+EXPORT ENDPOINTS:
+
+GET /vehicles/export/pdf
+Returns: PDF file download (application/pdf)
+
+GET /vehicles/export/excel
+Returns: Excel file download (application/vnd.openxmlformats...)
+
+GET /vehicles/export/docx
+Returns: Word document download (application/vnd.openxmlformats...)
+
+SYSTEM ENDPOINTS:
+
+GET /health
+Response:
+{
+  "status": "ok",
+  "message": "LoadGate API is running",
+  "timestamp": "2026-05-19T10:30:00Z"
+}
+
+GET /system/info
+Response:
+{
+  "version": "1.0.0",
+  "environment": "production",
+  "uptime": 86400,
+  "database": { "connected": true },
+  "arduino": { "connected": true }
+}
+
+ERROR RESPONSES:
+{
+  "success": false,
+  "error": "Error message",
+  "statusCode": 400 | 401 | 404 | 500
+}
+
+
+================================================================================
+11. CORE FEATURES & CAPABILITIES
+================================================================================
+
+1. REAL-TIME VEHICLE DETECTION
+   - Sonar sensor continuously monitors for approaching vehicles
+   - Distance-based classification (HUMAN, VEHICLE, GROUND, CEILING)
+   - Multi-sample weight measurement for accuracy
+   - Event-driven architecture captures all detections
+   - Sub-100ms response time
+
+2. AUTOMATED BARRIER CONTROL
+   - Servo motor controls physical gate
+   - Decision logic: Allow (0°→90°) or Block (stay at 0°)
+   - 40-second auto-close timeout (prevents accidental lockouts)
+   - Smooth position transitions (400ms movement time)
+   - Serial command interface from backend
+
+3. WEIGHT MEASUREMENT & ANALYSIS
+   - Four 100kg load cells for accurate measurement
+   - 10-sample averaging for precision
+   - Real-time weight monitoring (non-blocking reads)
+   - Support for axle weight distribution analysis
+   - Calibration factor: 4.58 (configurable)
+   - Resolution: ±0.5% accuracy
+
+4. VEHICLE IMAGE CAPTURE
+   - IP camera integration for vehicle imaging
+   - Automatic capture on detection
+   - Timestamp-based file naming
+   - Local storage with database reference
+   - Image preview in dashboard
+   - Frame capture for AI analysis
+
+5. AI-POWERED LICENSE PLATE DETECTION
+   - Google Gemini AI integration
+   - Automatic license plate recognition (OCR)
+   - Vehicle attribute detection:
+     * Vehicle type (car, truck, bus, etc.)
+     * Color
+     * Make and model
+     * Confidence scoring
+   - Fallback handling if API unavailable
+   - Batch processing support
+
+6. COMPREHENSIVE DATA RECORDING
+   - Timestamp for every detection (UTC)
+   - Complete sensor readings logged
+   - AI detection results stored
+   - User action trails maintained
+   - Complete audit history
+   - MongoDB persistence
+
+7. REAL-TIME DASHBOARD
+   - Home page with system overview
+   - Live load cell readings (all 4 cells)
+   - Component health status indicators
+   - Recent vehicles list with status
+   - Summary statistics (total, allowed, blocked)
+   - Real-time updates via Server-Sent Events
+
+8. VEHICLE RECORDS MANAGEMENT
+   - Complete CRUD operations
+   - Advanced filtering (status, date range, weight)
+   - Search by car number or license plate
+   - Pagination support (10/25/50 items per page)
+   - Edit/delete capabilities
+   - Bulk operations support
+
+9. COMPREHENSIVE ANALYTICS
+   - Total vehicles processed
+   - Allowed vs blocked ratio
+   - Average weight calculations
+   - Daily/weekly/monthly trends
+   - Peak hours analysis
+   - Export statistics
+
+10. MULTI-FORMAT EXPORT
+    - PDF: Professional formatted report with charts
+    - Excel: Spreadsheet with filters and formulas
+    - DOCX: Word document with tables and formatting
+    - CSV: Raw data export
+    - Customizable date ranges
+    - Selected records or all records
+
+11. USER AUTHENTICATION & ROLES
+    - Email/password based login
+    - JWT token authentication
+    - Role-based access control:
+      * Admin: Full access
+      * Operator: View and manage records
+      * Viewer: Read-only access
+    - Session management
+    - Automatic logout on inactivity
+
+12. SYSTEM CONFIGURATION
+    - Max weight limit adjustment
+    - Calibration factor tuning
+    - Arduino port selection
+    - Camera settings
+    - Gate auto-close timeout
+    - System name and location
+    - Non-destructive configuration updates
+
+13. COMPONENT HEALTH MONITORING
+    - Real-time status of all 7 components:
+      * Load cells
+      * HX711 amplifier
+      * Servo motor
+      * IR sensor
+      * Buck controller
+      * Sonar sensor
+      * IP camera
+    - Last update timestamps
+    - Visual health indicators
+    - Diagnostic information
+
+14. RESPONSIVE WEB INTERFACE
+    - Desktop optimized (1920×1080+)
+    - Tablet friendly (768-1024px)
+    - Mobile compatible (320-767px)
+    - Tailwind CSS responsive design
+    - Touch-friendly interface
+    - Dark/light theme support
+
+
+================================================================================
+12. INSTALLATION & CONFIGURATION
+================================================================================
+
+SYSTEM REQUIREMENTS:
+
+Hardware:
+- Arduino Uno or Mega board
+- Load cells (4 × 100kg)
+- HX711 amplifier module
+- Servo motor
+- Sonar sensor (HC-SR04)
+- IP camera with network access
+- USB cable for Arduino programming
+- Power supply (2A+, 5V)
+
+Software:
+- Node.js 16.0.0 or higher
+- npm 7.0.0 or higher
+- MongoDB 5.0 or higher
+- Arduino IDE 2.0 or higher
+- FFmpeg (for video processing)
+- Windows 10+, Linux, or macOS
+
+INSTALLATION STEPS:
+
+1. CLONE/SETUP PROJECT
+   - Download LoadGate repository
+   - Extract to working directory: c:\LoadGate
+
+2. INSTALL SYSTEM DEPENDENCIES
+   From project root:
+   ```
+   node setup.js
+   ```
+   This verifies: Node.js, MongoDB, FFmpeg
+
+3. INSTALL FRONTEND DEPENDENCIES
+   ```
+   cd frontend
+   npm install
+   cd ..
+   ```
+   Installs: Next.js, React, Tailwind, Chart.js, etc.
+
+4. INSTALL BACKEND DEPENDENCIES
+   ```
+   cd backend
+   npm install
+   cd ..
+   ```
+   Installs: Express, Mongoose, SerialPort, etc.
+
+5. CONFIGURE BACKEND (.env)
+   Create file: backend/.env
+   
+   ```
+   # Server
+   PORT=5000
+   NODE_ENV=development
+   
+   # Database
+   MONGODB_URI=mongodb://localhost:27017/loadgate
+   
+   # Frontend
+   FRONTEND_URL=http://localhost:3000
+   
+   # Arduino
+   ARDUINO_PORT=COM3
+   MAX_WEIGHT_LIMIT=5000
+   
+   # Camera
+   CAMERA_URL=http://192.168.1.100:8080
+   
+   # AI
+   GEMINI_API_KEY=your_gemini_api_key_here
+   ```
+
+6. CONFIGURE ARDUINO HARDWARE
+   - Connect Arduino via USB
+   - Connect load cells to HX711
+   - Connect servo to pin 11
+   - Connect sonar TRIG to pin 9, ECHO to pin 10
+   - Connect power supply
+   - Verify all connections
+
+7. UPLOAD ARDUINO FIRMWARE
+   - Open Arduino IDE
+   - File → Open → loadgate.ino
+   - Tools → Board → Arduino Uno (or Mega)
+   - Tools → Port → COM3 (your Arduino port)
+   - Sketch → Upload (or Ctrl+U)
+   - Verify "Upload complete" message
+
+8. START SERVICES
+   Option A - PowerShell script:
+   ```
+   .\run.ps1
+   ```
+   Opens separate terminals for each service
+   
+   Option B - Manual (3 terminals):
+   Terminal 1 - Backend:
+   ```
+   cd backend
+   npm run dev
+   ```
+   (Runs on http://localhost:5000)
+   
+   Terminal 2 - Frontend:
+   ```
+   cd frontend
+   npm run dev
+   ```
+   (Runs on http://localhost:3000)
+   
+   Terminal 3 - Monitoring:
+   ```
+   node seeds/seedVehicles.js
+   ```
+   (Optional - seeds test data)
+
+9. ACCESS APPLICATION
+   - Open browser: http://localhost:3000
+   - Login with default credentials
+   - Navigate to Settings to verify Arduino connection
+   - Check component health status
+   - Perform test detection
+
+10. VERIFICATION CHECKLIST
+    □ Backend running on port 5000
+    □ Frontend running on port 3000
+    □ MongoDB connected
+    □ Arduino connected and responding
+    □ All load cells showing values
+    □ Servo responding to commands
+    □ Camera connected and streaming
+    □ Login functionality working
+    □ Dashboard loading with data
+
+TROUBLESHOOTING INSTALLATION:
+
+Issue: MongoDB connection fails
+Solution: 
+- Verify MongoDB is running: mongod command
+- Check MONGODB_URI in .env
+- Ensure database exists or auto-create enabled
+
+Issue: Arduino port not found
+Solution:
+- Check Device Manager for COM port
+- Install CH340 drivers if needed
+- Update ARDUINO_PORT in .env
+- Verify USB cable quality
+
+Issue: npm install fails
+Solution:
+- Clear npm cache: npm cache clean --force
+- Delete node_modules: rm -r node_modules
+- Delete package-lock.json
+- Run npm install again
+
+Issue: Frontend/Backend won't start
+Solution:
+- Check ports 3000 and 5000 not in use
+- Kill process: netstat -ano | findstr ":3000"
+- Verify Node.js installation: node --version
+- Check .env files exist and correct
+
+
+================================================================================
+13. SYSTEM WORKFLOW & PROCESS FLOW
+================================================================================
+
+COMPLETE DETECTION FLOW:
+
+1. INITIALIZATION
+   └─ Arduino starts up
+   └─ All sensors initialized and calibrated
+   └─ Serial communication established at 9600 baud
+   └─ Backend connects to Arduino serial port
+   └─ System ready message sent to backend
+
+2. CONTINUOUS MONITORING
+   └─ Every 100ms loop iteration:
+      ├─ Sonar reads distance
+      ├─ Distance classified (VEHICLE/HUMAN/CLEAR/etc.)
+      ├─ Live weight read (non-blocking)
+      └─ Serial output sent to backend
+
+3. VEHICLE APPROACH (Distance decreases)
+   └─ Sonar: 200cm → 150cm → 100cm
+   └─ Classification: VEHICLE detected
+   └─ Backend receives updates continuously
+   └─ Dashboard updates in real-time
+
+4. OBJECT DETECTED (Stable distance in range)
+   └─ objectPresent = false AND distance in 10-300cm range
+   └─ Set objectPresent = true
+   └─ Lock detectionProcessing = true (prevent duplicates)
+   └─ Read weight: 10-sample average
+   └─ Format: "EVENT:VEHICLE|3500.25"
+   └─ Send to backend via serial port
+
+5. BACKEND RECEIVES EVENT
+   └─ Arduino service parses: VEHICLE, 3500.25 kg
+   └─ Create Vehicle record in MongoDB
+   └─ Store: timestamp, weight, type, image reference
+   └─ Emit event: 'vehicle-detected'
+   └─ Listen for AI detection trigger
+
+6. IMAGE CAPTURE (Optional)
+   └─ Camera service captures frame
+   └─ Save to local storage with timestamp
+   └─ Store framePath in Vehicle record
+   └─ Trigger Gemini AI analysis
+
+7. AI LICENSE PLATE DETECTION (Optional)
+   └─ Gemini service receives frame
+   └─ Analyze vehicle characteristics
+   └─ Extract license plate (if visible)
+   └─ Return: plate number, confidence, vehicle type, color
+   └─ Store in Vehicle.geminiDetection
+   └─ Update Vehicle record in MongoDB
+
+8. BACKEND DECISION LOGIC
+   └─ Retrieve max weight limit from Settings
+   └─ Compare vehicle weight to limit
+   └─ Decision:
+      ├─ Weight < Limit: ALLOWED ✓
+      └─ Weight ≥ Limit: BLOCKED ✗
+   └─ Send command to Arduino: CMD:ALLOW or CMD:BLOCK
+
+9. ARDUINO RECEIVES COMMAND
+   └─ Serial command handler receives: "CMD:ALLOW"
+   └─ If ALLOW:
+      ├─ Move servo to 90° (open gate)
+      ├─ Start 40-second auto-close timer
+      ├─ Send serial: "SERVO_MOVED: 90"
+      └─ detectionProcessing = false (allow next detection)
+   └─ If BLOCK:
+      ├─ Keep servo at 0° (gate closed)
+      ├─ Send serial: "SERVO_MOVED: 0"
+      └─ detectionProcessing = false (allow next detection)
+
+10. VEHICLE EXITS (Distance increases)
+    └─ Sonar: 50cm → 100cm → 150cm → 200cm
+    └─ Classification: CLEAR
+    └─ Reset timeout counter
+    └─ objectPresent = true, timeout > 1.5s
+    └─ objectPresent = false
+    └─ Send serial: "OBJECT LEFT"
+    └─ Move servo to 0° (close gate)
+
+11. FRONTEND UPDATES
+    └─ Backend broadcasts via REST API or SSE
+    └─ Frontend dashboard refreshes
+    └─ Display new vehicle record:
+       ├─ Timestamp
+       ├─ Car number (if captured)
+       ├─ Weight: 3500.25 kg
+       ├─ Status: ALLOWED/BLOCKED
+       ├─ Image thumbnail
+       ├─ License plate (if detected)
+    └─ Update statistics
+    └─ Play notification sound
+
+12. USER ACTIONS (Optional)
+    └─ Operator views vehicle details
+    └─ Views captured image and AI detection results
+    └─ Can manually override decision (edit record)
+    └─ Can export records to PDF/Excel/Word
+    └─ Can delete incorrect records
+    └─ Can adjust settings (weight limit, etc.)
+
+13. CYCLE REPEATS
+    └─ System ready for next vehicle
+    └─ objectPresent = false, detectionProcessing = false
+    └─ Wait for next sonar detection
+
+
+================================================================================
+14. SECURITY & AUTHENTICATION
+================================================================================
+
+AUTHENTICATION SYSTEM:
+
+1. USER LOGIN
+   - Email and password validation
+   - Password hashing: bcryptjs (10 rounds)
+   - Returns JWT token on success
+   - Token stored in browser localStorage
+   - Automatic logout on token expiry
+
+2. JWT TOKEN STRUCTURE
+   Header: { alg: "HS256", typ: "JWT" }
+   Payload: { userId, email, role, iat, exp }
+   Signature: HMAC-SHA256 signed with secret
+
+   Token format: "Bearer eyJhbGci..."
+   Expires: 24 hours (configurable)
+
+3. AUTHORIZATION LEVELS
+
+   Admin Role:
+   - Full system access
+   - User management
+   - Settings modification
+   - All data operations (CRUD)
+   - Export functionality
+   - System health monitoring
+
+   Operator Role:
+   - View vehicle records
+   - Manage vehicle records (C/U/D)
+   - View analytics
+   - Export reports
+   - Manual gate control
+   - Cannot modify users or system settings
+
+   Viewer Role:
+   - Read-only access
+   - View records and analytics
+   - Cannot modify data
+   - Cannot export
+   - Cannot control gates
+
+4. API SECURITY
+
+   CORS (Cross-Origin Resource Sharing):
+   - Frontend origin whitelisted
+   - Prevents unauthorized domain requests
+   - Credentials allowed
+   - Methods: GET, POST, DELETE, OPTIONS
+
+   Request Validation:
+   - Content-Type enforcement (application/json)
+   - Request size limits (50MB)
+   - Input sanitization
+   - SQL injection prevention (MongoDB parameterization)
+
+   HTTPS (Production):
+   - SSL/TLS encryption recommended
+   - Secure cookie transmission
+   - Certificate validation
+
+5. DATA SECURITY
+
+   Password Storage:
+   - Bcryptjs hashing (10 rounds)
+   - Salted hashes
+   - Never stored in plaintext
+
+   Sensitive Data:
+   - API keys stored in .env (not in code)
+   - Database credentials encrypted
+   - Tokens never logged
+   - PII handled carefully
+
+   Database Access:
+   - Mongoose schema validation
+   - Input type checking
+   - No direct query injection possible
+
+6. SERIAL COMMUNICATION SECURITY
+
+   Arduino Commands:
+   - Validated command format: CMD:ACTION
+   - Only known commands accepted
+   - Invalid commands logged and rejected
+   - Rate limiting to prevent command flooding
+
+   Backend-Arduino Connection:
+   - Local USB connection (trusted)
+   - No authentication required (physical security)
+   - Serial port access validated at startup
+
+7. SESSION MANAGEMENT
+
+   Token-Based:
+   - Stateless authentication
+   - No session server storage required
+   - Scalable to multiple backend instances
+
+   Logout:
+   - Token removed from frontend
+   - Backend doesn't maintain blacklist (optional)
+   - Automatic expiry after 24 hours
+
+8. LOGGING & MONITORING
+
+   Audit Trail:
+   - All user actions logged
+   - Timestamp of each operation
+   - User identification
+   - Action details (create/read/update/delete)
+
+   Security Logs:
+   - Failed login attempts
+   - Invalid API requests
+   - Command rejections
+   - System errors
+
+9. RECOMMENDED SECURITY PRACTICES
+
+   Development:
+   - Keep dependencies updated
+   - Use .env for sensitive config
+   - Validate all inputs
+   - Test for vulnerabilities
+
+   Production:
+   - Enable HTTPS/SSL
+   - Use strong passwords
+   - Implement rate limiting
+   - Monitor logs for anomalies
+   - Regular security audits
+   - Backup database regularly
+   - Implement DDoS protection
+   - Use WAF (Web Application Firewall)
+
+
+================================================================================
+15. EXPORT & REPORTING FEATURES
+================================================================================
+
+EXPORT CAPABILITIES:
+
+Three export formats supported with customizable filtering:
+
+1. PDF EXPORT
+   Format: application/pdf
+   Library: PDFKit
+   
+   Contents:
+   - Header with company logo
+   - Export date and time
+   - Filter summary (date range, status, etc.)
+   - Professional table layout
+   - Columns: #, Timestamp, Car Number, Weight, Status
+   - Summary statistics:
+     * Total records exported
+     * Allowed count
+     * Blocked count
+     * Average weight
+   - Page numbers
+   - Footer with generation timestamp
+   
+   Customization:
+   - Date range selection
+   - Status filter (ALLOWED/BLOCKED/ALL)
+   - Weight range filter
+   - Sorting options
+   - Select all or specific records
+
+2. EXCEL EXPORT
+   Format: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+   Library: ExcelJS
+   
+   Features:
+   - Multiple sheets:
+     * Data: Raw vehicle records
+     * Summary: Statistics and aggregates
+     * Analytics: Trends and charts
+   
+   Data Sheet:
+   - Column headers: ID, Timestamp, Car Number, Weight, Status, Image
+   - Data rows: Each vehicle record
+   - Number formatting for weights (2 decimal places)
+   - Date formatting (YYYY-MM-DD HH:MM:SS)
+   - Frozen header row
+   
+   Summary Sheet:
+   - Key metrics:
+     * Total vehicles
+     * Allowed/blocked breakdown
+     * Average/max/min weight
+     * Export date range
+   
+   Features:
+   - Column auto-sizing
+   - Cell borders and formatting
+   - Color-coded status (green=allowed, red=blocked)
+   - Filters enabled on data
+   - Print-friendly formatting
+
+3. DOCX EXPORT
+   Format: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+   Library: DOCX
+   
+   Document Structure:
+   - Title: "LoadGate Vehicle Report"
+   - Metadata section:
+     * Generated: [date/time]
+     * Report period: [from-to dates]
+     * Total records: [count]
+   
+   Summary Section:
+   - Statistics table:
+     * Total vehicles processed
+     * Allowed count (with percentage)
+     * Blocked count (with percentage)
+     * Average weight
+     * Max/min weight
+   
+   Data Table:
+   - Headers: Timestamp | Car Number | Weight | Status | Notes
+   - Table rows for each vehicle
+   - Alternating row colors
+   - Professional formatting
+   
+   Footer:
+   - Report generation timestamp
+   - Document version
+
+EXPORT WORKFLOW:
+
+1. User clicks "Export" button on Vehicles page
+2. Export Modal appears with options:
+   - Select format: PDF / Excel / DOCX
+   - Filter options:
+     * Date range (from/to)
+     * Status (ALLOWED/BLOCKED/ALL)
+     * Weight range (min/max)
+   - Records selection:
+     * All visible records
+     * Current page only
+     * Selected records
+   - Click "Export" button
+
+3. Backend processing:
+   - Query database with filters
+   - Format data for selected export type
+   - Generate document with styling
+   - Return as file download
+
+4. Browser downloads file:
+   - Filename: loadgate_export_[format]_[timestamp].[ext]
+   - Example: loadgate_export_pdf_20260519_103000.pdf
+   - Auto-opens download in default application
+
+FILTERING OPTIONS:
+
+Date Range:
+- From: Select start date
+- To: Select end date
+- Format: YYYY-MM-DD
+- Default: Last 30 days
+
+Status Filter:
+- ALL: Include all records
+- ALLOWED: Only vehicles allowed through
+- BLOCKED: Only vehicles blocked
+- Default: ALL
+
+Weight Range:
+- Minimum: Lowest weight filter (kg)
+- Maximum: Highest weight filter (kg)
+- Default: No limits (all weights)
+
+Sorting:
+- By Timestamp (ascending/descending)
+- By Weight (ascending/descending)
+- Default: Timestamp descending (newest first)
+
+API ENDPOINTS:
+
+GET /api/vehicles/export/pdf?dateFrom=2026-05-01&dateTo=2026-05-19&status=ALLOWED
+Response: PDF file download
+
+GET /api/vehicles/export/excel?weightMin=1000&weightMax=5000
+Response: Excel file download
+
+GET /api/vehicles/export/docx?page=1&limit=100
+Response: DOCX file download
+
+Backend parameters parsed and applied before document generation.
+
+
+================================================================================
+16. PERFORMANCE METRICS
+================================================================================
+
+SYSTEM PERFORMANCE TARGETS:
+
+Response Times:
+- Arduino sensor reading: < 100ms
+- Sonar distance update: ~100ms
+- Load cell measurement (10 samples): ~300ms
+- Backend API response: < 500ms
+- Frontend page load: < 2 seconds
+- Database query: < 100ms
+- Export generation: < 5 seconds
+
+Throughput:
+- Vehicles processed per hour: 1000+
+- Concurrent users: 10+
+- Database records: 1,000,000+
+- API requests per second: 100+
+
+Accuracy:
+- Weight measurement: ±0.5% of full scale
+- License plate detection: 95%+ confidence
+- Distance measurement: ±1cm
+
+Resource Usage:
+- Arduino RAM: ~2KB for state management
+- Backend RAM: ~200MB (Node.js + Express)
+- Frontend Bundle: ~500KB (minified + gzip)
+- Database storage: ~1MB per 10,000 vehicles
+
+SCALABILITY CONSIDERATIONS:
+
+Horizontal Scaling:
+- Multiple backend instances behind load balancer
+- Each Arduino connected to dedicated backend
+- Shared MongoDB database (Atlas recommended)
+- Session-less API (stateless architecture)
+
+Vertical Scaling:
+- Increase server RAM for caching
+- Faster CPU for database queries
+- SSD storage for faster I/O
+- Higher bandwidth for concurrent users
+
+Optimization Opportunities:
+- Implement Redis caching for frequently accessed data
+- Database query optimization with indexes
+- Frontend lazy loading and code splitting
+- Image compression and CDN delivery
+- API response pagination for large datasets
+- Gzip compression for API responses
+- Browser caching with Cache-Control headers
+
+
+================================================================================
+17. FUTURE ENHANCEMENTS
+================================================================================
+
+SHORT TERM (1-3 months):
+
+1. Mobile App
+   - React Native or Flutter app
+   - Real-time push notifications
+   - QR code scanning for quick lookup
+   - Offline mode with sync
+   - Biometric authentication
+
+2. Advanced Analytics
+   - Machine learning for anomaly detection
+   - Predictive maintenance alerts
+   - Peak hours optimization
+   - Revenue forecasting
+   - Custom report builder
+
+3. Multi-Gate Support
+   - Multiple Arduino units per location
+   - Central management dashboard
+   - Coordinated traffic flow
+   - Load balancing between gates
+   - Cross-gate analytics
+
+4. Voice Notifications
+   - Audio alerts for violations
+   - Text-to-speech announcements
+   - Customizable alert sounds
+   - Multi-language support
+
+MEDIUM TERM (3-6 months):
+
+5. Integration APIs
+   - Webhook support for third-party systems
+   - Payment gateway integration
+   - ERP system connectivity
+   - Toll management integration
+   - Fleet management system sync
+
+6. Advanced AI Features
+   - Vehicle make/model recognition
+   - Driver identification
+   - Facial recognition (with privacy controls)
+   - Behavior pattern analysis
+   - Traffic prediction
+
+7. Multi-Site Management
+   - Centralized dashboard for multiple locations
+   - Standardized reporting across sites
+   - Cross-site analytics
+   - Fleet-wide insights
+   - Consolidated billing
+
+8. IoT Integration
+   - MQTT protocol support
+   - IoT device provisioning
+   - Sensor fusion algorithms
+   - Real-time telemetry streaming
+   - Edge computing capabilities
+
+LONG TERM (6-12 months):
+
+9. Blockchain Integration
+   - Immutable audit trail
+   - Smart contracts for payments
+   - Distributed ledger for transparency
+   - Cryptographic verification
+
+10. AR/VR Features
+    - Augmented reality inspection tools
+    - Virtual tour of facilities
+    - 3D vehicle inspection
+    - Remote monitoring with VR
+    - Immersive training simulations
+
+11. Predictive Maintenance
+    - IoT sensor monitoring
+    - Predictive failure analysis
+    - Automated maintenance scheduling
+    - Part inventory management
+    - Service integration
+
+12. Cloud Migration
+    - AWS/Azure/GCP deployment
+    - Serverless architecture
+    - Microservices transformation
+    - Kubernetes orchestration
+    - Auto-scaling capabilities
+
+
+================================================================================
+18. DEPLOYMENT & OPERATIONS
+================================================================================
+
+DEPLOYMENT OPTIONS:
+
+1. LOCAL DEPLOYMENT (Development/Small Scale)
+   - Single server setup
+   - Local MongoDB database
+   - Direct Arduino connection
+   - Best for: Testing, pilot projects
+   - Cost: Minimal hardware + connectivity
+
+   Components:
+   - Windows/Linux/Mac workstation
+   - Node.js runtime
+   - MongoDB instance
+   - USB connection to Arduino
+   - LAN network access only
+
+2. SERVER DEPLOYMENT (Production)
+   - Dedicated Windows/Linux server
+   - Cloud MongoDB (Atlas)
+   - Network-connected Arduino
+   - Remote access via firewall
+   - Best for: Production facilities
+   - Cost: Server rental + connectivity
+
+   Infrastructure:
+   - Ubuntu 20.04 LTS or Windows Server
+   - 4GB+ RAM, 50GB storage
+   - Static IP address
+   - HTTPS/SSL certificate
+   - Automated backups
+   - Monitoring and logging
+
+3. CLOUD DEPLOYMENT (Scalable)
+   - AWS EC2 / Azure VM / GCP Compute
+   - MongoDB Atlas (managed database)
+   - API Gateway for routing
+   - Load balancer for multiple servers
+   - CDN for static assets
+   - Best for: Enterprise, multiple locations
+   - Cost: Pay-as-you-go scaling
+
+   Architecture:
+   - Container (Docker) based
+   - Kubernetes orchestration
+   - Auto-scaling groups
+   - Managed database service
+   - CloudWatch monitoring
+   - S3 storage for images
+
+DEPLOYMENT CHECKLIST:
+
+Pre-Deployment:
+□ All tests passing
+□ Code reviewed and approved
+□ Environment variables configured
+□ SSL certificate installed
+□ Database backup created
+□ Arduino calibrated
+□ All sensors tested
+□ Security audit completed
+
+Deployment:
+□ Stop current services
+□ Backup current database
+□ Deploy new code
+□ Run database migrations
+□ Update dependencies
+□ Test all endpoints
+□ Verify Arduino connection
+□ Check permissions
+□ Enable monitoring
+
+Post-Deployment:
+□ Monitor server logs
+□ Check system health
+□ Verify data persistence
+□ Test user access
+□ Monitor performance metrics
+□ Document deployment
+□ Notify users
+□ Plan rollback if needed
+
+MONITORING & MAINTENANCE:
+
+Monitoring Tools:
+- PM2: Node.js process manager with monitoring
+- Prometheus: Metrics collection
+- Grafana: Metrics visualization
+- ELK Stack: Logs aggregation
+- Sentry: Error tracking
+- New Relic: APM monitoring
+
+Alerts:
+- CPU usage > 80%
+- Memory usage > 90%
+- Database connection failed
+- Arduino disconnected
+- API response time > 2s
+- Error rate > 5%
+- Disk space < 20%
+
+Maintenance Tasks:
+- Daily: Check logs and alerts
+- Weekly: Database integrity check, performance review
+- Monthly: Security updates, dependency updates
+- Quarterly: Full security audit, capacity planning
+- Annually: Infrastructure review, cost optimization
+
+Backup Strategy:
+- Database: Daily backups to cloud storage
+- Code: Git repository with remote backup
+- Images: Automated S3 backup
+- Configuration: Version controlled
+- Retention: 30 days daily, 12 months yearly
+- Recovery time objective (RTO): < 1 hour
+
+
+================================================================================
+19. TROUBLESHOOTING GUIDE
+================================================================================
+
+COMMON ISSUES AND SOLUTIONS:
+
+ARDUINO CONNECTIVITY ISSUES:
+
+Problem: Arduino not detected
+Symptoms:
+- "Cannot find serial port" error
+- Arduino service fails to initialize
+- Dashboard shows "Arduino: disconnected"
+
+Solutions:
+1. Check physical USB connection
+2. Verify port in Device Manager (Windows)
+3. Install CH340 drivers: https://cdn.sparkfun.com/assets/learn_tutorials/8/3/CH341SER.ZIP
+4. Update ARDUINO_PORT in .env to correct COM port
+5. Try different USB cable
+6. Try different USB port on computer
+7. Restart Arduino IDE and reupload sketch
+
+Problem: Unstable connection / Data drops
+Symptoms:
+- Sporadic weight readings
+- Sonar detection irregular
+- Serial port disconnects frequently
+
+Solutions:
+1. Check USB cable quality and length (< 5m recommended)
+2. Use powered USB hub instead of direct connection
+3. Reduce baud rate noise: Add ferrite ring to USB cable
+4. Check for interference from other devices
+5. Ensure Arduino power supply is stable
+6. Reduce SAMPLE_DELAY from 100ms to 50ms
+7. Check serial buffer overflow in logs
+
+LOAD CELL / WEIGHT ISSUES:
+
+Problem: Zero weight reading always
+Symptoms:
+- Load cell shows 0 kg when vehicle is present
+- Weight never changes
+- All four cells report 0
+
+Solutions:
+1. Check physical connections of load cells
+2. Verify HX711 wiring (DT=pin13, SCK=pin12)
+3. Run calibration routine
+4. Check CALIBRATION_FACTOR value (should be 4.58)
+5. Perform TARE: Send "CMD:TARE" command
+6. Check for mechanical damage to load cells
+7. Verify 5V power supply to HX711
+
+Problem: Inconsistent weight readings
+Symptoms:
+- Weight fluctuates wildly
+- Average readings still incorrect
+- Varies 10% between measurements
+
+Solutions:
+1. Check load cell installation (ensure level)
+2. Verify all four load cells are connected
+3. Increase sample count from 10 to 20
+4. Add delay between samples (increase from 30ms to 50ms)
+5. Check for vibration/external movement
+6. Recalibrate: Use known weight and adjust factor
+7. Check for loose connections
+8. Replace HX711 if suspected defective
+
+SONAR / DETECTION ISSUES:
+
+Problem: No objects detected
+Symptoms:
+- Sonar always reads 0 or -1
+- No vehicles trigger detection
+- Distance stays at invalid value
+
+Solutions:
+1. Check sonar sensor connections (TRIG=9, ECHO=10)
+2. Verify sonar is powered (5V)
+3. Check for physical obstructions
+4. Verify sensor isn't facing wall (need space to detect)
+5. Test sonar with Serial Monitor commands
+6. Replace sonar sensor if suspected defective
+7. Check GPIO pin functionality
+
+Problem: False detections (multiple alerts for one vehicle)
+Symptoms:
+- Multiple EVENT messages for single vehicle
+- Gate opens/closes rapidly
+- Duplicate records created
+
+Solutions:
+1. Increase RESET_TIME from 1500ms to 2000ms
+2. Increase distance threshold in classify()
+3. Adjust DISTANCE_CHANGE_THRESHOLD in backend
+4. Check for reflective surfaces causing echo
+5. Reduce sonar sensitivity if adjustable
+6. Clear detection buffer: Restart Arduino
+
+SERVO / GATE CONTROL ISSUES:
+
+Problem: Servo doesn't move
+Symptoms:
+- Gate stays closed even after ALLOW command
+- No movement when receiving CMD:ALLOW
+- Serial shows "SERVO_MOVED: 90" but no physical movement
+
+Solutions:
+1. Check servo connection to pin 11
+2. Verify servo is powered (5V)
+3. Test servo with Arduino servo library example
+4. Check servo cable for damage
+5. Ensure servo has adequate power (1-2A capability)
+6. Move servo manually to check for mechanical damage
+7. Replace servo if suspected defective
+
+Problem: Servo moves slowly / jerks
+Symptoms:
+- Gate takes > 500ms to move
+- Movement is not smooth
+- Vibration during movement
+
+Solutions:
+1. Increase power supply capacity (use 2A+ supply)
+2. Reduce movement delay if under-powered
+3. Lubricate servo arm joints
+4. Check for mechanical resistance
+5. Verify PWM signal on pin 11
+6. Replace servo if damaged
+
+DATABASE / STORAGE ISSUES:
+
+Problem: MongoDB connection failed
+Symptoms:
+- "Cannot connect to MongoDB" error
+- Records not saving
+- Dashboard shows no data
+
+Solutions:
+1. Verify MongoDB is running: `mongod`
+2. Check MONGODB_URI in backend/.env
+3. Verify correct database name in URI
+4. Check MongoDB port (default 27017) is open
+5. If using MongoDB Atlas cloud:
+   - Verify connection string
+   - Check IP whitelist settings
+   - Test connection from Compass
+6. Restart MongoDB service
+7. Check database permissions
+
+Problem: Out of storage / Database full
+Symptoms:
+- Write operations failing
+- "Disk full" errors
+- Cannot save new records
+
+Solutions:
+1. Check disk space: `df -h` (Linux) or `diskpart` (Windows)
+2. Delete old records: `db.vehicles.deleteMany({timestamp:{$lt:...}})`
+3. Archive old data to backup
+4. Increase storage capacity
+5. Enable database compression
+6. Optimize indexes to reduce size
+
+FRONTEND / UI ISSUES:
+
+Problem: Dashboard not loading data
+Symptoms:
+- Page loads but shows "Loading..."
+- No vehicle records visible
+- API errors in console
+
+Solutions:
+1. Check backend is running on port 5000
+2. Verify FRONTEND_URL in backend/.env
+3. Check browser console for errors
+4. Test API directly: curl http://localhost:5000/api/health
+5. Clear browser cache: Ctrl+Shift+Delete
+6. Check network tab in developer tools
+7. Verify CORS is enabled in Express middleware
+
+Problem: Real-time updates not working
+Symptoms:
+- Dashboard doesn't refresh automatically
+- Must refresh page to see new records
+- SSE stream not connecting
+
+Solutions:
+1. Verify Arduino data is being sent
+2. Check backend logs for data events
+3. Test SSE endpoint: `curl http://localhost:5000/api/arduino/events/stream`
+4. Check browser support for SSE (all modern browsers)
+5. Verify CORS allows SSE connections
+6. Check for proxies/firewalls blocking SSE
+7. Increase SSE timeout if needed
+
+AUTHENTICATION ISSUES:
+
+Problem: Cannot login
+Symptoms:
+- Login button doesn't work
+- "Invalid credentials" error
+- Stuck on login page
+
+Solutions:
+1. Verify user exists in database
+2. Check password (case-sensitive)
+3. Clear browser cache
+4. Try incognito/private mode
+5. Check token expiration
+6. Reset password if forgotten
+7. Check browser console for errors
+
+Problem: Session expires unexpectedly
+Symptoms:
+- Logged out without warning
+- Token expired error
+- Redirected to login
+
+Solutions:
+1. Check JWT expiration time (default 24h)
+2. Verify system clock is correct
+3. Clear browser cache
+4. Check localStorage for token
+5. Increase token expiration if needed
+
+
+================================================================================
+20. CONCLUSION
+================================================================================
+
+LoadGate represents a comprehensive, modern solution for vehicle weighing and 
+access control. By integrating advanced hardware sensors with a full-stack web 
+application, the system delivers:
+
+KEY ACHIEVEMENTS:
+✓ Automated vehicle detection and weighing
+✓ Real-time barrier control and decision making
+✓ AI-powered license plate recognition
+✓ Comprehensive data analytics and reporting
+✓ User-friendly web interface
+✓ Scalable, maintainable architecture
+✓ Enterprise-grade security
+✓ Multi-export capabilities
+✓ Real-time monitoring and alerts
+✓ Extensible platform for future enhancements
+
+The three-tier architecture (Hardware → Backend → Frontend) ensures:
+- Separation of concerns
+- Independent scaling
+- Clear responsibilities
+- Reduced coupling
+- Easier maintenance
+- Future flexibility
+
+TECHNICAL EXCELLENCE:
+- Industry-standard technologies (Node.js, React, MongoDB)
+- RESTful API design following best practices
+- Real-time event-driven updates
+- Comprehensive error handling
+- Security-first approach
+- Well-documented codebase
+- Modular component structure
+
+BUSINESS VALUE:
+- Increases facility throughput
+- Reduces operational overhead
+- Provides audit trail for compliance
+- Enables data-driven decisions
+- Improves security and control
+- Scales with business growth
+- Supports integration with other systems
+
+The project is well-positioned for production deployment and future expansion.
+Recommended next steps:
+1. Complete production deployment checklist
+2. Implement monitoring and alerting
+3. Conduct security audit
+4. Train operational staff
+5. Plan enhancement roadmap
+6. Establish support procedures
+
+LoadGate delivers a robust, reliable foundation for modern vehicle management
+and access control operations.
+
+================================================================================
+END OF REPORT
+================================================================================
+
+Document prepared: May 19, 2026
+Next review: June 19, 2026

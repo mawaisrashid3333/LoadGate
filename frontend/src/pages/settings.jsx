@@ -204,39 +204,46 @@ export default function SettingsPage() {
           
           {/* Total Weight Display */}
           <div className={`mb-4 p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-blue-50'} border-2 border-blue-500`}>
-            <div className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Total Weight</div>
+            <div className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Live Total Weight</div>
             <div className="text-4xl font-bold text-blue-500 mt-1">
-              {Math.round(arduinoData.totalWeight)} <span className="text-lg">kg</span>
+              {arduinoData?.totalWeight ? Math.round(arduinoData.totalWeight) : 0} <span className="text-lg">kg</span>
             </div>
             <div className={`text-xs mt-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-              Status: <span className={`font-bold ${arduinoData.status === 'ALLOWED' ? 'text-green-500' : 'text-red-500'}`}>
-                {arduinoData.status}
+              Status: <span className={`font-bold ${
+                arduinoData?.status === 'CONNECTED' ? 'text-green-500' : 'text-red-500'
+              }`}>
+                {arduinoData?.status || 'UNKNOWN'}
               </span>
             </div>
             <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-              Last Update: {arduinoData.timestamp ? new Date(arduinoData.timestamp).toLocaleTimeString() : 'N/A'}
+              Last Update: {arduinoData?.timestamp ? new Date(arduinoData.timestamp).toLocaleTimeString() : 'N/A'}
             </div>
           </div>
 
           {/* Individual Load Cells */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {Object.entries(arduinoData.cells || {}).map(([cellName, cellData]) => (
-              <div key={cellName} className={`p-4 rounded-lg border ${getHealthBgColor(cellData.status)} border-current`}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Load Cell {cellName}
-                  </span>
-                  <Icon name={cellData.status === 'connected' ? 'MdCheckCircle' : 'MdCancel'} 
-                    className={`h-5 w-5 ${getHealthColor(cellData.status)}`} />
+            {['L1', 'L2', 'L3', 'L4'].map((cellName) => {
+              const cellData = arduinoData?.[cellName];
+              return (
+                <div key={cellName} className={`p-4 rounded-lg border ${
+                  isDark ? 'bg-slate-700 border-gray-600' : 'bg-gray-50 border-gray-300'
+                }`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Load Cell {cellName}
+                    </span>
+                    <Icon name={cellData?.status === 'connected' ? 'MdCheckCircle' : 'MdCancel'} 
+                      className={`h-5 w-5 ${cellData?.status === 'connected' ? 'text-green-500' : 'text-red-500'}`} />
+                  </div>
+                  <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    {Math.round(cellData?.value || 0)} kg
+                  </div>
+                  <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                    {cellData?.lastUpdate ? new Date(cellData.lastUpdate).toLocaleTimeString() : 'Waiting...'}
+                  </div>
                 </div>
-                <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  {Math.round(cellData.value)} kg
-                </div>
-                <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                  {cellData.lastUpdate ? new Date(cellData.lastUpdate).toLocaleTimeString() : 'Waiting...'}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
