@@ -168,7 +168,7 @@ const initializeServices = async () => {
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
       
-      console.log(`   ⏱ Waiting 3 seconds before frame capture...`);
+      console.log(`   ⏱ Waiting 500ms before frame capture...`);
       
       try {
         const frameCaptureService = require('./services/frameCaptureService');
@@ -180,9 +180,9 @@ const initializeServices = async () => {
           return;
         }
 
-        // Wait 3 seconds for stable frame
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        console.log(`   📸 Capturing frame after 3 second delay...`);
+        // Wait 500ms for stable frame
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log(`   📸 Capturing frame after 500ms delay...`);
 
         // Capture frame from buffer (synchronous - gets 4th frame from stream)
         const captureResult = frameCaptureService.captureAndSaveFrame('human-detection');
@@ -300,7 +300,7 @@ const initializeServices = async () => {
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
       
-      console.log(`   ⏱ Waiting 3 seconds before frame capture...`);
+      console.log(`   ⏱ Waiting 500ms before frame capture...`);
       
       try {
         const frameCaptureService = require('./services/frameCaptureService');
@@ -312,9 +312,9 @@ const initializeServices = async () => {
           return;
         }
 
-        // Wait 3 seconds for stable frame
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        console.log(`   📸 Capturing frame after 3 second delay...`);
+        // Wait 500ms for stable frame
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log(`   📸 Capturing frame after 500ms delay...`);
 
         // Capture frame from buffer (synchronous - gets 4th frame from stream)
         const captureResult = frameCaptureService.captureAndSaveFrame('sonar-vehicle');
